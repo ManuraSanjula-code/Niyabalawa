@@ -36,6 +36,7 @@ function App() {
   const [mainDishes, setMainDishes] = useState<MenuItem[]>([]);
   const [riceTypes, setRiceTypes] = useState<MenuItem[]>([]);
   const [addons, setAddons] = useState<MenuItem[]>([]);
+  const [desserts, setDesserts] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Load menu items from backend on component mount
@@ -51,11 +52,21 @@ function App() {
       // Separate items by category
       const mains = allMenuItems.filter((item: MenuItem) => item.category === 'main');
       const rice = allMenuItems.filter((item: MenuItem) => item.category === 'rice');
-      const addonsItems = allMenuItems.filter((item: MenuItem) => item.category === 'addon');
+      
+      // Filter addons - separate proteins/sides from desserts/drinks
+      const addonItems = allMenuItems.filter((item: MenuItem) => item.category === 'addon');
+      
+      // Proteins and sides (those with higher prices, typically > 50)
+      const addonsOnly = addonItems.filter((item: MenuItem) => item.halfPrice >= 50);
+      
+      // Desserts and drinks (those with lower prices, or can be manually filtered by name)
+      // For now, keeping only items < 50 or add more desserts/drinks manually
+      const dessertsAndDrinks = addonItems.filter((item: MenuItem) => item.halfPrice < 50);
       
       setMainDishes(mains);
       setRiceTypes(rice);
-      setAddons(addonsItems);
+      setAddons(addonsOnly);
+      setDesserts(dessertsAndDrinks);
     } catch (error) {
       console.error('Error loading menu items:', error);
       // Fallback to local data if backend fails
@@ -63,6 +74,7 @@ function App() {
       setMainDishes(localMains);
       setRiceTypes(localRice);
       setAddons(localAddons);
+      setDesserts([]);
     } finally {
       setLoading(false);
     }
@@ -254,7 +266,7 @@ function App() {
                 >
                   <div className="flex items-center justify-center gap-1.5">
                     <span>🍗</span>
-                    <span>EXTRA ITEMS</span>
+                    <span>ADD-ONS</span>
                   </div>
                 </button>
                 <button
@@ -270,7 +282,7 @@ function App() {
                 >
                   <div className="flex items-center justify-center gap-1.5">
                     <span>🍰</span>
-                    <span>ALL EXTRAS</span>
+                    <span>DESSERT / DRINKS</span>
                   </div>
                 </button>
               </div>
@@ -316,11 +328,11 @@ function App() {
                 {activeTab === 'desserts' && (
                   <div className="h-full flex flex-col animate-fadeIn">
                     <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-3 py-1 flex-shrink-0">
-                      <p className="text-xs text-purple-100">All extras - proteins, sides, desserts & beverages</p>
+                      <p className="text-xs text-purple-100">Sweet treats and refreshing beverages</p>
                     </div>
                     
                     <div className="flex-1 overflow-y-auto p-2">
-                      {addons.length > 0 ? (
+                      {desserts.length > 0 ? (
                         <table className="w-full text-xs">
                           <thead className="sticky top-0 bg-white border-b border-gray-300 z-10">
                             <tr>
@@ -329,7 +341,7 @@ function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {addons.map((item) => (
+                            {desserts.map((item) => (
                               <tr key={item.id} className="border-b border-gray-100 hover:bg-purple-50 transition-colors">
                                 <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">{item.name}</td>
                                 <td className="py-1 px-1 text-center">
@@ -348,8 +360,8 @@ function App() {
                         <div className="h-full flex items-center justify-center">
                           <div className="text-center py-8 px-4">
                             <div className="text-4xl mb-3">🍰🥤</div>
-                            <p className="text-sm font-semibold text-gray-600 mb-1">No items yet</p>
-                            <p className="text-xs text-gray-500">Use "Add Product" to add desserts, drinks & sides</p>
+                            <p className="text-sm font-semibold text-gray-600 mb-1">No desserts or drinks yet</p>
+                            <p className="text-xs text-gray-500">Use "Add Product" to add desserts and drinks</p>
                           </div>
                         </div>
                       )}
