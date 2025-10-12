@@ -12,13 +12,14 @@ router.get('/', async (req: Request, res: Response) => {
     const result = await pool.query(
       `SELECT id, name, half_price as "halfPrice", full_price as "fullPrice", category, kitchen
        FROM menu_items
-       ORDER BY 
-         CASE category
-           WHEN 'main' THEN 1
-           WHEN 'rice' THEN 2
-           WHEN 'addon' THEN 3
-         END,
-         name`
+       ORDER BY CASE category
+                    WHEN 'main' THEN 1
+                    WHEN 'rice' THEN 2
+                    WHEN 'addon' THEN 3
+                    WHEN 'dessert' THEN 4
+                    WHEN 'drinks' THEN 5
+                    END,
+                name`
     );
 
     res.json(result.rows);
@@ -67,7 +68,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!['main', 'rice', 'addon'].includes(category)) {
+    if (category && !['main', 'rice', 'addon', 'dessert', 'drinks'].includes(category)) {
       return res.status(400).json({ error: 'Invalid category' });
     }
 
