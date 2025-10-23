@@ -18,6 +18,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
         name: '',
         halfPrice: '',
         fullPrice: '',
+        price: '',
         category: 'main' as ProductCategory,
         kitchen: 'front' as 'front' | 'back'
     });
@@ -46,6 +47,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
             name: '',
             halfPrice: '',
             fullPrice: '',
+            price: '',
             category: defaultCategory,
             kitchen: 'front'
         });
@@ -58,22 +60,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
             return false;
         }
 
-        const halfPrice = parseFloat(formData.halfPrice);
-        const fullPrice = parseFloat(formData.fullPrice);
+        // Check if this is a single-price or dual-price category
+        const singlePriceCategories = ['addon', 'dessert', 'drinks'];
+        const isDualPrice = !singlePriceCategories.includes(formData.category);
 
-        if (isNaN(halfPrice) || halfPrice <= 0) {
-            setMessage({ type: 'error', text: 'Please enter a valid half price' });
-            return false;
-        }
+        if (isDualPrice) {
+            // Validate half and full price for main/rice
+            const halfPrice = parseFloat(formData.halfPrice);
+            const fullPrice = parseFloat(formData.fullPrice);
 
-        if (isNaN(fullPrice) || fullPrice <= 0) {
-            setMessage({ type: 'error', text: 'Please enter a valid full price' });
-            return false;
-        }
+            if (isNaN(halfPrice) || halfPrice <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid half price' });
+                return false;
+            }
 
-        if (fullPrice < halfPrice) {
-            setMessage({ type: 'error', text: 'Full price cannot be less than half price' });
-            return false;
+            if (isNaN(fullPrice) || fullPrice <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid full price' });
+                return false;
+            }
+
+            if (fullPrice < halfPrice) {
+                setMessage({ type: 'error', text: 'Full price cannot be less than half price' });
+                return false;
+            }
+        } else {
+            // Validate single price for addon/dessert/drinks
+            const price = parseFloat(formData.price);
+
+            if (isNaN(price) || price <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid price' });
+                return false;
+            }
         }
 
         return true;
@@ -90,15 +107,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
         setMessage(null);
 
         try {
-            const newProduct: Omit<MenuItem, 'id'> = {
+            const singlePriceCategories = ['addon', 'dessert', 'drinks'];
+            const isDualPrice = !singlePriceCategories.includes(formData.category);
+
+            const newProduct: Partial<MenuItem> = {
                 name: formData.name.trim(),
-                halfPrice: parseFloat(formData.halfPrice),
-                fullPrice: parseFloat(formData.fullPrice),
                 category: formData.category,
                 kitchen: formData.kitchen
             };
 
-            await menuApi.createMenuItem(newProduct);
+            if (isDualPrice) {
+                newProduct.halfPrice = parseFloat(formData.halfPrice);
+                newProduct.fullPrice = parseFloat(formData.fullPrice);
+            } else {
+                newProduct.price = parseFloat(formData.price);
+            }
+
+            await menuApi.createMenuItem(newProduct as Omit<MenuItem, 'id'>);
 
             setMessage({
                 type: 'success',
@@ -119,6 +144,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
                 name: '',
                 halfPrice: '',
                 fullPrice: '',
+                price: '',
                 category: defaultCategory,
                 kitchen: 'front'
             });
@@ -201,17 +227,54 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
                             />
                         </div>
 
-                        {/* Prices */}
-                        <div className="grid grid-cols-2 gap-4">
+                        {/* Prices - Conditional based on category */}
+                        {['main', 'rice'].includes(formData.category) ? (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="halfPrice" className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Half Price (Rs.) *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        id="halfPrice"
+                                        name="halfPrice"
+                                        value={formData.halfPrice}
+                                        onChange={handleInputChange}
+                                        placeholder="0.00"
+                                        step="0.01"
+                                        min="0"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        disabled={isSubmitting}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="fullPrice" className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Full Price (Rs.) *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        id="fullPrice"
+                                        name="fullPrice"
+                                        value={formData.fullPrice}
+                                        onChange={handleInputChange}
+                                        placeholder="0.00"
+                                        step="0.01"
+                                        min="0"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                        disabled={isSubmitting}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
                             <div>
-                                <label htmlFor="halfPrice" className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Half Price (Rs.) *
+                                <label htmlFor="price" className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Price (Rs.) *
                                 </label>
                                 <input
                                     type="number"
-                                    id="halfPrice"
-                                    name="halfPrice"
-                                    value={formData.halfPrice}
+                                    id="price"
+                                    name="price"
+                                    value={formData.price}
                                     onChange={handleInputChange}
                                     placeholder="0.00"
                                     step="0.01"
@@ -220,24 +283,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onClose, onProductAdded }) => {
                                     disabled={isSubmitting}
                                 />
                             </div>
-                            <div>
-                                <label htmlFor="fullPrice" className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Full Price (Rs.) *
-                                </label>
-                                <input
-                                    type="number"
-                                    id="fullPrice"
-                                    name="fullPrice"
-                                    value={formData.fullPrice}
-                                    onChange={handleInputChange}
-                                    placeholder="0.00"
-                                    step="0.01"
-                                    min="0"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                    disabled={isSubmitting}
-                                />
-                            </div>
-                        </div>
+                        )}
 
                         {/* Category */}
                         <div>

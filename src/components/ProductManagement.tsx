@@ -26,6 +26,7 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ onClose, onProduc
 
     useEffect(() => {
         filterItems();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchTerm, categoryFilter, menuItems]);
 
     const loadMenuItems = async () => {
@@ -84,22 +85,37 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ onClose, onProduc
             return false;
         }
 
-        const halfPrice = parseFloat(editingItem.halfPrice.toString());
-        const fullPrice = parseFloat(editingItem.fullPrice.toString());
+        // Check if this is a single-price or dual-price category
+        const singlePriceCategories = ['addon', 'dessert', 'drinks'];
+        const isDualPrice = !singlePriceCategories.includes(editingItem.category);
 
-        if (isNaN(halfPrice) || halfPrice <= 0) {
-            setMessage({ type: 'error', text: 'Please enter a valid half price' });
-            return false;
-        }
+        if (isDualPrice) {
+            // Validate half and full price for main/rice
+            const halfPrice = parseFloat(editingItem.halfPrice?.toString() || '0');
+            const fullPrice = parseFloat(editingItem.fullPrice?.toString() || '0');
 
-        if (isNaN(fullPrice) || fullPrice <= 0) {
-            setMessage({ type: 'error', text: 'Please enter a valid full price' });
-            return false;
-        }
+            if (isNaN(halfPrice) || halfPrice <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid half price' });
+                return false;
+            }
 
-        if (fullPrice < halfPrice) {
-            setMessage({ type: 'error', text: 'Full price cannot be less than half price' });
-            return false;
+            if (isNaN(fullPrice) || fullPrice <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid full price' });
+                return false;
+            }
+
+            if (fullPrice < halfPrice) {
+                setMessage({ type: 'error', text: 'Full price cannot be less than half price' });
+                return false;
+            }
+        } else {
+            // Validate single price for addon/dessert/drinks
+            const price = parseFloat(editingItem.price?.toString() || '0');
+
+            if (isNaN(price) || price <= 0) {
+                setMessage({ type: 'error', text: 'Please enter a valid price' });
+                return false;
+            }
         }
 
         return true;
@@ -112,13 +128,23 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ onClose, onProduc
         setMessage(null);
 
         try {
-            await menuApi.updateMenuItem(editingItem.id, {
+            const singlePriceCategories = ['addon', 'dessert', 'drinks'];
+            const isDualPrice = !singlePriceCategories.includes(editingItem.category);
+
+            const updateData: Record<string, string | number> = {
                 name: editingItem.name.trim(),
-                halfPrice: parseFloat(editingItem.halfPrice.toString()),
-                fullPrice: parseFloat(editingItem.fullPrice.toString()),
                 category: editingItem.category,
                 kitchen: editingItem.kitchen
-            });
+            };
+
+            if (isDualPrice) {
+                updateData.halfPrice = parseFloat(editingItem.halfPrice?.toString() || '0');
+                updateData.fullPrice = parseFloat(editingItem.fullPrice?.toString() || '0');
+            } else {
+                updateData.price = parseFloat(editingItem.price?.toString() || '0');
+            }
+
+            await menuApi.updateMenuItem(editingItem.id, updateData);
 
             setMessage({
                 type: 'success',
@@ -308,39 +334,61 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ onClose, onProduc
                                                     />
                                                 </div>
 
-                                                {/* Half Price */}
-                                                <div>
-                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                                        Half Price (Rs.) *
-                                                    </label>
-                                                    <input
-                                                        type="number"
-                                                        name="halfPrice"
-                                                        value={editingItem.halfPrice}
-                                                        onChange={handleInputChange}
-                                                        step="0.01"
-                                                        min="0"
-                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                        disabled={isSubmitting}
-                                                    />
-                                                </div>
+                                                {/* Conditional Price Fields */}
+                                                {['main', 'rice'].includes(editingItem.category) ? (
+                                                    <>
+                                                        {/* Half Price */}
+                                                        <div>
+                                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                                Half Price (Rs.) *
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                name="halfPrice"
+                                                                value={editingItem.halfPrice || ''}
+                                                                onChange={handleInputChange}
+                                                                step="0.01"
+                                                                min="0"
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                disabled={isSubmitting}
+                                                            />
+                                                        </div>
 
-                                                {/* Full Price */}
-                                                <div>
-                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                                        Full Price (Rs.) *
-                                                    </label>
-                                                    <input
-                                                        type="number"
-                                                        name="fullPrice"
-                                                        value={editingItem.fullPrice}
-                                                        onChange={handleInputChange}
-                                                        step="0.01"
-                                                        min="0"
-                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                        disabled={isSubmitting}
-                                                    />
-                                                </div>
+                                                        {/* Full Price */}
+                                                        <div>
+                                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                                Full Price (Rs.) *
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                name="fullPrice"
+                                                                value={editingItem.fullPrice || ''}
+                                                                onChange={handleInputChange}
+                                                                step="0.01"
+                                                                min="0"
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                disabled={isSubmitting}
+                                                            />
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    /* Single Price for Addon/Dessert/Drinks */
+                                                    <div className="md:col-span-2">
+                                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                            Price (Rs.) *
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            name="price"
+                                                            value={editingItem.price || ''}
+                                                            onChange={handleInputChange}
+                                                            step="0.01"
+                                                            min="0"
+                                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                            disabled={isSubmitting}
+                                                        />
+                                                    </div>
+                                                )}
 
                                                 {/* Category */}
                                                 <div>
@@ -434,14 +482,23 @@ const ProductManagement: React.FC<ProductManagementProps> = ({ onClose, onProduc
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-4 text-sm">
-                                                    <div>
-                                                        <span className="text-gray-600">Half:</span>
-                                                        <span className="ml-2 font-bold text-blue-600">Rs. {item.halfPrice}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-gray-600">Full:</span>
-                                                        <span className="ml-2 font-bold text-green-600">Rs. {item.fullPrice}</span>
-                                                    </div>
+                                                    {['main', 'rice'].includes(item.category) ? (
+                                                        <>
+                                                            <div>
+                                                                <span className="text-gray-600">Half:</span>
+                                                                <span className="ml-2 font-bold text-blue-600">Rs. {item.halfPrice}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-600">Full:</span>
+                                                                <span className="ml-2 font-bold text-green-600">Rs. {item.fullPrice}</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div>
+                                                            <span className="text-gray-600">Price:</span>
+                                                            <span className="ml-2 font-bold text-green-600">Rs. {item.price}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 
