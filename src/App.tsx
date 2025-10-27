@@ -5,6 +5,7 @@ import AdminPanel from './components/AdminPanel';
 import ProductManagement from './components/ProductManagement';
 import Settings from './components/Settings';
 import OrderHistory from './components/OrderHistory';
+import RoleSelector, { UserRole } from './components/RoleSelector';
 import { useBilling } from './hooks/useBilling';
 import { socketService } from './services/socket';
 import { menuApi, refreshApi } from './services/api';
@@ -36,6 +37,10 @@ function App() {
 
     // Monitor network status in real-time
     const { isOnline, wasOffline } = useNetworkStatus();
+
+    // Role-based access control
+    const [currentRole, setCurrentRole] = useState<UserRole>('cashier');
+    const [showRoleSelector, setShowRoleSelector] = useState(false);
 
     // Function to clear/cancel cart
     const clearCart = () => {
@@ -402,89 +407,121 @@ function App() {
             {/* Header */}
             <header className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-md px-3 py-1 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-sm font-bold text-white">Niyabalawa Restaurant</h1>
-                        <p className="text-blue-100 text-xs">Set Menu Order System</p>
+                    <div className="flex items-center gap-4">
+                        <div>
+                            <h1 className="text-sm font-bold text-white">Niyabalawa Restaurant</h1>
+                            <p className="text-blue-100 text-xs">Set Menu Order System</p>
+                        </div>
+                        {/* Role Indicator and Selector */}
+                        <div className="flex items-center gap-2">
+                            <div className="bg-white/20 backdrop-blur-sm rounded-md px-3 py-1 border border-white/30">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-blue-100 font-medium">Role:</span>
+                                    <span className="text-sm font-bold text-white capitalize">{currentRole}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowRoleSelector(true)}
+                                className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg font-semibold text-xs border border-white/30 transition-all duration-200"
+                                title="Change Role"
+                            >
+                                🔄 Switch Role
+                            </button>
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        {/* Settings Button */}
-                        <button
-                            onClick={() => setShowSettings(true)}
-                            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                            <span>⚙️</span>
-                            <span>Settings</span>
-                        </button>
+                        {/* Manager & Admin: Settings Button */}
+                        {(currentRole === 'manager' || currentRole === 'admin') && (
+                            <button
+                                onClick={() => setShowSettings(true)}
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                            >
+                                <span>⚙️</span>
+                                <span>Settings</span>
+                            </button>
+                        )}
 
-                        {/* Order History Button */}
-                        <button
-                            onClick={() => setShowOrderHistory(true)}
-                            className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                            <span>📊</span>
-                            <span>Order History</span>
-                        </button>
+                        {/* Manager & Admin: Order History Button */}
+                        {(currentRole === 'manager' || currentRole === 'admin') && (
+                            <button
+                                onClick={() => setShowOrderHistory(true)}
+                                className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                            >
+                                <span>📊</span>
+                                <span>Order History</span>
+                            </button>
+                        )}
 
-                        {/* Admin Panel Button */}
-                        <button
-                            onClick={() => setShowAdminPanel(true)}
-                            className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                            <span>➕</span>
-                            <span>Add Product</span>
-                        </button>
+                        {/* Admin Only: Add Product Button */}
+                        {currentRole === 'admin' && (
+                            <button
+                                onClick={() => setShowAdminPanel(true)}
+                                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                            >
+                                <span>➕</span>
+                                <span>Add Product</span>
+                            </button>
+                        )}
 
-                        {/* Product Management Button */}
-                        <button
-                            onClick={() => setShowProductManagement(true)}
-                            className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                            <span>✏️</span>
-                            <span>Manage Products</span>
-                        </button>
+                        {/* Admin Only: Product Management Button */}
+                        {currentRole === 'admin' && (
+                            <button
+                                onClick={() => setShowProductManagement(true)}
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                            >
+                                <span>✏️</span>
+                                <span>Manage Products</span>
+                            </button>
+                        )}
 
-                        {/* Pending Orders Button */}
-                        <button
-                            onClick={() => setShowPendingOrders(true)}
-                            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                            <span>📋</span>
-                            <span>Pending Orders</span>
-                            {pendingOrders.length > 0 && (
-                                <span className="bg-white text-orange-600 font-bold px-2 py-0.5 rounded-full text-xs">
+                        {/* Cashier & Admin: Pending Orders Button */}
+                        {(currentRole === 'cashier' || currentRole === 'admin') && (
+                            <button
+                                onClick={() => setShowPendingOrders(true)}
+                                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                            >
+                                <span>📋</span>
+                                <span>Pending Orders</span>
+                                {pendingOrders.length > 0 && (
+                                    <span className="bg-white text-orange-600 font-bold px-2 py-0.5 rounded-full text-xs">
                   {pendingOrders.length}
                 </span>
-                            )}
-                        </button>
+                                )}
+                            </button>
+                        )}
 
-                        {/* Token Display */}
+                        {/* Token Display - All Roles */}
                         <div className="bg-white/20 backdrop-blur-sm rounded-md px-3 py-1 border border-white/30">
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-blue-100 font-medium">Token:</span>
                                 <span className="text-xl font-bold text-white">{tokenNumber}</span>
                             </div>
                         </div>
-                        <button
-                            onClick={handleRefreshAllData}
-                            disabled={isRefreshing || !isOnline}
-                            className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Refresh all data from server"
-                        >
-                            <svg
-                                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
+                        
+                        {/* Manager & Admin: Refresh Button */}
+                        {(currentRole === 'manager' || currentRole === 'admin') && (
+                            <button
+                                onClick={handleRefreshAllData}
+                                disabled={isRefreshing || !isOnline}
+                                className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Refresh all data from server"
                             >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                />
-                            </svg>
-                            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                        </button>
+                                <svg
+                                    className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                    />
+                                </svg>
+                                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                        )}
 
                         <NetworkStatus />
                     </div>
@@ -748,6 +785,31 @@ function App() {
                     onClose={() => setShowOrderHistory(false)}
                     onEditOrder={handleEditOrderFromHistory}
                 />
+            )}
+
+            {/* Role Selector Modal */}
+            {showRoleSelector && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 relative">
+                        <button
+                            onClick={() => setShowRoleSelector(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                        <div className="p-6">
+                            <RoleSelector
+                                currentRole={currentRole}
+                                onRoleChange={(role) => {
+                                    setCurrentRole(role);
+                                    setShowRoleSelector(false);
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Network Status Overlay - Freezes UI when offline */}
