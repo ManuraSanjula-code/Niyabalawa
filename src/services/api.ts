@@ -21,6 +21,16 @@ export const orderApi = {
   },
 
   /**
+   * Get all orders with optional status filter
+   */
+  async getAllOrders(status?: string, limit?: number): Promise<Order[]> {
+    const response = await api.get('/orders/all', {
+      params: { status, limit }
+    });
+    return response.data;
+  },
+
+  /**
    * Get all pending orders
    */
   async getPendingOrders(): Promise<PendingOrder[]> {
@@ -89,7 +99,7 @@ export const tokenApi = {
   /**
    * Get token generation history
    */
-  async getTokenHistory(date?: string): Promise<any[]> {
+  async getTokenHistory(date?: string): Promise<unknown[]> {
     const response = await api.get('/tokens/history', {
       params: { date },
     });
@@ -137,6 +147,61 @@ export const menuApi = {
   async deleteMenuItem(id: string): Promise<void> {
     await api.delete(`/menu/${id}`);
   },
+};
+
+export const refreshApi = {
+    /**
+     * Refresh all data from the server
+     * Returns all necessary data in a single call for efficiency
+     */
+    async refreshAllData(): Promise<{
+        menuItems: MenuItem[];
+        pendingOrders: PendingOrder[];
+        recentOrders: Order[];
+        tokenCount: number;
+    }> {
+        try {
+            // Make all API calls in parallel for better performance
+            const [menuItems, pendingOrders, recentOrders, tokenCountData] = await Promise.all([
+                menuApi.getAllMenuItems(),
+                orderApi.getPendingOrders(),
+                orderApi.getAllOrders('completed', 10), // Get last 10 completed orders
+                tokenApi.getCurrentTokenCount()
+            ]);
+
+            return {
+                menuItems,
+                pendingOrders,
+                recentOrders,
+                tokenCount: tokenCountData
+            };
+        } catch (error) {
+            console.error('Error refreshing all data:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Refresh menu data only
+     */
+    async refreshMenuData(): Promise<MenuItem[]> {
+        return await menuApi.getAllMenuItems();
+    },
+
+    /**
+     * Refresh orders data only
+     */
+    async refreshOrdersData(): Promise<{
+        pendingOrders: PendingOrder[];
+        recentOrders: Order[];
+    }> {
+        const [pendingOrders, recentOrders] = await Promise.all([
+            orderApi.getPendingOrders(),
+            orderApi.getAllOrders('completed', 10)
+        ]);
+
+        return { pendingOrders, recentOrders };
+    }
 };
 
 export default api;

@@ -16,7 +16,7 @@ const createTables = async () => {
         name VARCHAR(100) NOT NULL,
         half_price DECIMAL(10,2) NOT NULL,
         full_price DECIMAL(10,2) NOT NULL,
-        category VARCHAR(20) NOT NULL CHECK (category IN ('main', 'rice', 'addon')),
+        category VARCHAR(20) NOT NULL CHECK (category IN ('main', 'rice', 'addon','dessert','drinks')),
         kitchen VARCHAR(10) NOT NULL CHECK (kitchen IN ('front', 'back')),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()

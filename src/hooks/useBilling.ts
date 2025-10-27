@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { CartItem, MenuItem, PendingOrder } from '../types';
+import { CartItem, MenuItem, PendingOrder, Order } from '../types';
 import { orderApi } from '../services/api';
 
 // Local storage key for pending orders (as backup/fallback)
@@ -174,6 +174,13 @@ export const useBilling = () => {
     return null;
   }, [pendingOrders]);
 
+  const loadOrderForEdit = useCallback((order: Order | PendingOrder) => {
+    // Load any order (pending or paid) into cart for editing
+    setCart([...order.items]);
+    setTokenNumber(order.tokenNumber);
+    setOrderType(order.orderType);
+  }, []);
+
   const updatePendingOrder = useCallback(async (token: string) => {
     try {
       const totalAmount = cart.reduce((sum, item) => sum + ((item.price + (item.ricePrice || 0)) * item.quantity), 0);
@@ -277,6 +284,7 @@ export const useBilling = () => {
     changeRiceType,
     savePendingOrder,
     loadPendingOrder,
+    loadOrderForEdit,
     updatePendingOrder,
     completePendingOrder,
     deletePendingOrder,

@@ -67,6 +67,34 @@ export class OrderService {
   }
 
   /**
+   * Get all orders with optional filtering
+   */
+  async getAllOrders(status?: string, limit?: number): Promise<Order[]> {
+    try {
+      let query = 'SELECT * FROM orders';
+      const params: (string | number)[] = [];
+      
+      if (status) {
+        query += ' WHERE status = $1';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY created_at DESC';
+      
+      if (limit) {
+        query += ` LIMIT $${params.length + 1}`;
+        params.push(limit);
+      }
+
+      const result = await pool.query(query, params);
+      return result.rows.map(this.formatOrder);
+    } catch (error) {
+      console.error('❌ Error getting all orders:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get all pending orders (dine-in only)
    */
   async getPendingOrders(): Promise<Order[]> {
@@ -118,19 +146,28 @@ export class OrderService {
     try {
       await client.query('BEGIN');
 
-      // Update order
-      const result = await client.query(
-        `UPDATE orders
-         SET items = $1, total = $2, updated_at = NOW()
-         WHERE token_number = $3
-         RETURNING *`,
-        [JSON.stringify(items), total, tokenNumber]
+      // Get current order to store original items
+      const currentOrder = await client.query(
+        `SELECT * FROM orders WHERE token_number = $1`,
+        [tokenNumber]
       );
 
-      if (result.rows.length === 0) {
+      if (currentOrder.rows.length === 0) {
         await client.query('ROLLBACK');
         return null;
       }
+
+      const currentData = currentOrder.rows[0];
+      const originalItems = currentData.original_items || currentData.items;
+
+      // Update order with new items and mark as edited
+      const result = await client.query(
+        `UPDATE orders
+         SET items = $1, total = $2, updated_at = NOW(), original_items = $3, is_edited = true
+         WHERE token_number = $4
+         RETURNING *`,
+        [JSON.stringify(items), total, JSON.stringify(originalItems), tokenNumber]
+      );
 
       const order = result.rows[0];
 
@@ -336,6 +373,8 @@ export class OrderService {
       updatedAt: new Date(dbOrder.updated_at as string),
       completedAt: dbOrder.completed_at ? new Date(dbOrder.completed_at as string) : undefined,
       frontendId: dbOrder.frontend_id as string | undefined,
+      originalItems: dbOrder.original_items as CartItem[] | undefined,
+      isEdited: dbOrder.is_edited as boolean | undefined,
     };
   }
 }

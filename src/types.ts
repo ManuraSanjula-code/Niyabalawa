@@ -1,9 +1,10 @@
 export interface MenuItem {
   id: string;
   name: string;
-  halfPrice: number;
-  fullPrice: number;
-  category: 'main' | 'rice' | 'addon';
+  halfPrice?: number;  // Optional - only for main and rice
+  fullPrice?: number;  // Optional - only for main and rice
+  price?: number;      // Optional - only for addon, dessert, drinks
+  category: 'main' | 'rice' | 'addon' | 'dessert' | 'drinks';
   kitchen: 'front' | 'back';
 }
 
@@ -13,7 +14,8 @@ export interface CartItem {
   price: number;
   quantity: number;
   portion?: 'half' | 'full';
-  category?: 'main' | 'rice' | 'addon';
+  category?: 'main' | 'rice' | 'addon' | 'dessert' | 'drinks';
+  kitchen?: 'front' | 'back'; // Added kitchen property for printing
   riceType?: string; // For set menu items, stores the selected rice type
   ricePrice?: number; // Additional price for rice upgrade
 }
@@ -29,6 +31,8 @@ export interface Order {
   orderType: 'dine-in' | 'take-away';
   status: 'pending' | 'paid' | 'completed' | 'cancelled';
   frontendId?: string;
+  originalItems?: CartItem[]; // Store original items before edit
+  isEdited?: boolean; // Flag to indicate if order was edited
 }
 
 export interface PendingOrder extends Order {

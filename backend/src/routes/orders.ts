@@ -34,6 +34,24 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/orders/all
+ * Get all orders with optional status filter
+ */
+router.get('/all', async (req: Request, res: Response) => {
+  try {
+    const { status, limit } = req.query;
+    const orders = await orderService.getAllOrders(
+      status as string | undefined,
+      limit ? parseInt(limit as string) : undefined
+    );
+    res.json(orders);
+  } catch (error) {
+    console.error('Error getting all orders:', error);
+    res.status(500).json({ error: 'Failed to get orders' });
+  }
+});
+
+/**
  * GET /api/orders/pending
  * Get all pending orders
  */
