@@ -105,6 +105,14 @@ export const tokenApi = {
     });
     return response.data;
   },
+
+  /**
+   * Reset token counter to 1 (end of day)
+   */
+  async resetTokenCounter(): Promise<{ message: string }> {
+    const response = await api.post('/tokens/reset');
+    return response.data;
+  },
 };
 
 // Menu API functions

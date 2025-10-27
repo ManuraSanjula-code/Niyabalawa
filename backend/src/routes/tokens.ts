@@ -39,10 +39,18 @@ router.get('/history', async (req: Request, res: Response) => {
 router.post('/reset', async (req: Request, res: Response) => {
   try {
     await tokenService.resetTokenCounter();
-    res.json({ message: 'Token counter reset successfully' });
+    console.log('✅ Token counter reset endpoint completed successfully');
+    res.status(200).json({ 
+      message: 'Token counter reset successfully',
+      success: true 
+    });
   } catch (error) {
-    console.error('Error resetting token counter:', error);
-    res.status(500).json({ error: 'Failed to reset token counter' });
+    console.error('❌ Error in reset token endpoint:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to reset token counter';
+    res.status(500).json({ 
+      error: errorMessage,
+      success: false 
+    });
   }
 });
 

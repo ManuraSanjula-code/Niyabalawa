@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Save, RefreshCw } from 'lucide-react';
+import { X, Printer, Save, RefreshCw, RotateCcw } from 'lucide-react';
 import { getAvailablePrinters, testPrint } from '../utils/printerUtils';
+import { tokenApi } from '../services/api';
 
 interface SettingsProps {
     onClose: () => void;
@@ -30,6 +31,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [testingPrinter, setTestingPrinter] = useState<string>('');
+    const [isResettingToken, setIsResettingToken] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const loadPrinters = async () => {
@@ -152,6 +154,41 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     const handleRefreshPrinters = () => {
         setMessage({ type: 'success', text: 'Refreshing printer list...' });
         loadPrinters();
+    };
+
+    const handleResetToken = async () => {
+        // Confirmation dialog
+        const confirmReset = window.confirm(
+            '⚠️ Are you sure you want to reset the token counter?\n\n' +
+            'This will prepare the system for the NEXT DAY.\n' +
+            'Tomorrow\'s tokens will start from 1.\n\n' +
+            'Today\'s orders will remain unchanged in the database.\n\n' +
+            'Do you want to continue?'
+        );
+
+        if (!confirmReset) {
+            return;
+        }
+
+        try {
+            setIsResettingToken(true);
+            setMessage({ type: 'success', text: 'Resetting token counter for next day...' });
+            
+            await tokenApi.resetTokenCounter();
+            
+            setMessage({ 
+                type: 'success', 
+                text: '✅ Token counter prepared for next day! Tomorrow\'s tokens will start from 1.' 
+            });
+        } catch (error) {
+            console.error('Error resetting token counter:', error);
+            setMessage({ 
+                type: 'error', 
+                text: '❌ Failed to reset token counter. Please try again.' 
+            });
+        } finally {
+            setIsResettingToken(false);
+        }
     };
 
     return (
@@ -312,6 +349,38 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                                     <RefreshCw size={16} />
                                     <span>Refresh Printer List</span>
                                 </button>
+                            </div>
+
+                            {/* Reset Token Counter Button */}
+                            <div className="pt-4 border-t border-gray-200">
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                                        <RotateCcw size={18} />
+                                        End of Day - Prepare for Next Day
+                                    </h4>
+                                    <p className="text-sm text-yellow-800 mb-3">
+                                        Click this at the end of the day to prepare for tomorrow. 
+                                        Tomorrow's token counter will start from 1. 
+                                        All today's orders remain safely in the database.
+                                    </p>
+                                    <button
+                                        onClick={handleResetToken}
+                                        disabled={isResettingToken}
+                                        className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isResettingToken ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                <span>Preparing...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <RotateCcw size={16} />
+                                                <span>Prepare for Next Day</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Info Box */}

@@ -103,7 +103,7 @@ const startServer = async () => {
 ║   Health: http://localhost:${PORT}/api/health         ║
 ║                                                       ║
 ║   WebSocket: Enabled (Socket.IO)                      ║
-║   Database: PostgreSQL + Redis                        ║
+║   Database: PostgreSQL (Token Counter & Data)         ║
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
       `);

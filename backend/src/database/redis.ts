@@ -52,6 +52,9 @@ export const redisHelpers = {
 
   // Reset token counter (for new day)
   resetTokenCounter: async (): Promise<void> => {
+    if (!redisClient.isOpen) {
+      throw new Error('Redis client is not connected');
+    }
     const today = new Date().toISOString().split('T')[0];
     const key = `token_counter:${today}`;
     await redisClient.set(key, '0');

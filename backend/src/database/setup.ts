@@ -67,6 +67,16 @@ const createTables = async () => {
       );
     `);
 
+    // Token Counter Table (for daily counter management)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS token_counter (
+        date DATE PRIMARY KEY,
+        current_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Create indexes for better performance
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -74,6 +84,7 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
       CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
       CREATE INDEX IF NOT EXISTS idx_token_log_date ON token_log(date);
+      CREATE INDEX IF NOT EXISTS idx_token_counter_date ON token_counter(date);
     `);
 
     // Create updated_at trigger function

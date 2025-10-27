@@ -13,7 +13,7 @@ export class OrderService {
     frontendId?: string
   ): Promise<Order> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -73,14 +73,14 @@ export class OrderService {
     try {
       let query = 'SELECT * FROM orders';
       const params: (string | number)[] = [];
-      
+
       if (status) {
         query += ' WHERE status = $1';
         params.push(status);
       }
-      
+
       query += ' ORDER BY created_at DESC';
-      
+
       if (limit) {
         query += ` LIMIT $${params.length + 1}`;
         params.push(limit);
@@ -267,7 +267,7 @@ export class OrderService {
    */
   async deleteOrder(tokenNumber: string): Promise<boolean> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -314,7 +314,7 @@ export class OrderService {
    */
   async deleteAllOrders(): Promise<number> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -325,7 +325,7 @@ export class OrderService {
       const result = await client.query('DELETE FROM orders');
 
       await client.query('COMMIT');
-      
+
       const deletedCount = result.rowCount || 0;
       console.log(`✅ Deleted ${deletedCount} orders`);
 
