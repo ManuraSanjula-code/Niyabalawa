@@ -168,14 +168,28 @@ const NetworkStatus = () => {
             // Measure actual signal strength
             const signalStrength = navigator.onLine ? await measureSignalStrength() : 0;
 
-            setNetworkInfo({
-                online: navigator.onLine,
-                effectiveType: connection?.effectiveType || 'unknown',
-                downlink: connection?.downlink || 0,
-                rtt: connection?.rtt || 0,
-                networkName: networkName,
-                ssid: ssid,
-                signalStrength: signalStrength
+            // Only update state if values actually changed to prevent unnecessary re-renders
+            setNetworkInfo(prev => {
+                const newInfo = {
+                    online: navigator.onLine,
+                    effectiveType: connection?.effectiveType || 'unknown',
+                    downlink: connection?.downlink || 0,
+                    rtt: connection?.rtt || 0,
+                    networkName: networkName,
+                    ssid: ssid,
+                    signalStrength: signalStrength
+                };
+                
+                // Check if anything actually changed
+                if (
+                    prev.online === newInfo.online &&
+                    prev.networkName === newInfo.networkName &&
+                    Math.abs(prev.signalStrength - newInfo.signalStrength) < 10 // Ignore small signal changes
+                ) {
+                    return prev; // No change, prevent re-render
+                }
+                
+                return newInfo;
             });
         };
 
@@ -195,8 +209,8 @@ const NetworkStatus = () => {
             connection.addEventListener('change', updateNetworkInfo);
         }
 
-        // Update every 10 seconds to get real-time data
-        const interval = setInterval(updateNetworkInfo, 10000);
+        // Update every 30 seconds to get real-time data (reduced to prevent input disruption)
+        const interval = setInterval(updateNetworkInfo, 30000);
 
         return () => {
             window.removeEventListener('online', updateNetworkInfo);

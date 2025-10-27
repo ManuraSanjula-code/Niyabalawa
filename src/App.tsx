@@ -60,6 +60,7 @@ function App() {
     };
 
     const [activeTab, setActiveTab] = useState<'addons' | 'desserts'>('addons');
+    const [kitchenFilter, setKitchenFilter] = useState<'all' | 'front' | 'back'>('all');
     const [showPendingOrders, setShowPendingOrders] = useState(false);
     const [showAdminPanel, setShowAdminPanel] = useState(false);
     const [showProductManagement, setShowProductManagement] = useState(false);
@@ -539,6 +540,40 @@ function App() {
                                 <p className="text-xs text-green-100">Complete meal with white rice</p>
                             </div>
 
+                            {/* Kitchen Filter */}
+                            <div className="flex gap-1 p-2 bg-gray-50 border-b border-gray-200">
+                                <button
+                                    onClick={() => setKitchenFilter('all')}
+                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
+                                        kitchenFilter === 'all'
+                                            ? 'bg-green-600 text-white shadow'
+                                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    All
+                                </button>
+                                <button
+                                    onClick={() => setKitchenFilter('front')}
+                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
+                                        kitchenFilter === 'front'
+                                            ? 'bg-blue-600 text-white shadow'
+                                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    🍳 Front
+                                </button>
+                                <button
+                                    onClick={() => setKitchenFilter('back')}
+                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
+                                        kitchenFilter === 'back'
+                                            ? 'bg-orange-600 text-white shadow'
+                                            : 'bg-white text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    🔥 Back
+                                </button>
+                            </div>
+
                             <div className="flex-1 overflow-y-auto p-2">
                                 <table className="w-full text-xs">
                                     <thead className="sticky top-0 bg-white border-b border-gray-300">
@@ -549,9 +584,18 @@ function App() {
                                     </tr>
                                     </thead>
                                     <tbody>
-                                    {mainDishes.map((item) => (
+                                    {mainDishes
+                                        .filter(item => kitchenFilter === 'all' || item.kitchen === kitchenFilter)
+                                        .map((item) => (
                                         <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
-                                            <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">{item.name}</td>
+                                            <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">
+                                                {item.name}
+                                                {kitchenFilter === 'all' && (
+                                                    <span className={`ml-1 text-xs ${item.kitchen === 'front' ? 'text-blue-600' : 'text-orange-600'}`}>
+                                                        {item.kitchen === 'front' ? '🍳' : '🔥'}
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className="py-1 px-1 text-center">
                                                 <button
                                                     onClick={() => addToCart(item, 'half')}
@@ -641,7 +685,7 @@ function App() {
                                                                 onClick={() => addToCart(item)}
                                                                 className="bg-orange-500 hover:bg-orange-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
                                                             >
-                                                                +{item.halfPrice}
+                                                                +{Number(item.price) || Number(item.halfPrice) || 0}
                                                             </button>
                                                         </td>
                                                     </tr>
@@ -677,7 +721,7 @@ function App() {
                                                                     onClick={() => addToCart(item)}
                                                                     className="bg-purple-500 hover:bg-purple-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
                                                                 >
-                                                                    +{item.halfPrice}
+                                                                    +{Number(item.price) || Number(item.halfPrice) || 0}
                                                                 </button>
                                                             </td>
                                                         </tr>
@@ -789,8 +833,8 @@ function App() {
 
             {/* Role Selector Modal */}
             {showRoleSelector && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 relative">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowRoleSelector(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
                         <button
                             onClick={() => setShowRoleSelector(false)}
                             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"

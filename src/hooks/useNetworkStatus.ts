@@ -36,14 +36,17 @@ export const useNetworkStatus = () => {
                     method: 'HEAD',
                     cache: 'no-cache'
                 });
-                setIsOnline(response.ok);
-            } catch (error) {
-                setIsOnline(false);
+                const newStatus = response.ok;
+                // Only update state if status actually changed to prevent unnecessary re-renders
+                setIsOnline(prev => prev === newStatus ? prev : newStatus);
+            } catch {
+                // Only update to offline if currently showing online
+                setIsOnline(prev => prev ? false : prev);
             }
         };
 
-        // Check connectivity every 10 seconds
-        const interval = setInterval(checkConnectivity, 10000);
+        // Check connectivity every 30 seconds (reduced frequency to prevent input disruption)
+        const interval = setInterval(checkConnectivity, 30000);
 
         // Cleanup
         return () => {

@@ -49,7 +49,20 @@ export const useBilling = () => {
   }, [pendingOrders]);
 
   const addToCart = useCallback((item: MenuItem, portion?: 'half' | 'full') => {
-    const price = portion === 'half' ? item.halfPrice : item.fullPrice;
+    // Determine price based on item type
+    let price: number;
+    
+    if (portion === 'half') {
+      price = Number(item.halfPrice) || 0;
+    } else if (portion === 'full') {
+      price = Number(item.fullPrice) || 0;
+    } else {
+      // For addons, desserts, drinks - use single price field
+      // Fallback to halfPrice for old items that were created with half_price/full_price format
+      // Convert to number in case backend sends as string
+      price = Number(item.price) || Number(item.halfPrice) || Number(item.fullPrice) || 0;
+    }
+    
     const cartItemId = `${item.id}-${portion || 'default'}`;
     
     setCart(prevCart => {

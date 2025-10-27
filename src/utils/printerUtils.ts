@@ -166,6 +166,9 @@ const formatKitchenOrder = (orderData: unknown): string => {
         if (Array.isArray(currentItems)) {
             const removedItems = originalItems.filter(origItem => {
                 const oItem = origItem as Record<string, unknown>;
+                // Only include back kitchen items
+                if (oItem.kitchen !== 'back') return false;
+                
                 return !currentItems.some(currItem => {
                     const cItem = currItem as Record<string, unknown>;
                     return cItem.id === oItem.id && 
@@ -206,8 +209,15 @@ const formatKitchenOrder = (orderData: unknown): string => {
     
     if (order.items && Array.isArray(order.items)) {
         const currentItems = order.items as unknown[];
+        
+        // Filter to show ONLY back kitchen items
+        const backKitchenItems = currentItems.filter(item => {
+            const itemObj = item as Record<string, unknown>;
+            return itemObj.kitchen === 'back';
+        });
+        
         const addedItems = isEdited && originalItems && Array.isArray(originalItems) 
-            ? currentItems.filter(currItem => {
+            ? backKitchenItems.filter(currItem => {
                 const cItem = currItem as Record<string, unknown>;
                 return !originalItems.some(origItem => {
                     const oItem = origItem as Record<string, unknown>;
@@ -219,7 +229,7 @@ const formatKitchenOrder = (orderData: unknown): string => {
             })
             : [];
 
-        order.items.forEach((item: unknown, index: number) => {
+        backKitchenItems.forEach((item: unknown, index: number) => {
             const itemObj = item as Record<string, unknown>;
             const quantity = Number(itemObj.quantity) || 1;
             
@@ -492,10 +502,35 @@ const formatToken = (tokenData: unknown): string => {
 
 /**
  * Print to back kitchen using Electron API
+ * Only prints if there are back kitchen items
  */
 export const printToBackKitchen = async (orderData: unknown): Promise<boolean> => {
+    if (!orderData || typeof orderData !== 'object') {
+        console.log('No order data provided to back kitchen print');
+        return false;
+    }
+    
+    const order = orderData as Record<string, unknown>;
+    const items = order.items as unknown[] | undefined;
+    
+    // Check if there are any back kitchen items
+    if (!items || !Array.isArray(items)) {
+        console.log('No items in order for back kitchen');
+        return false;
+    }
+    
+    const backKitchenItems = items.filter(item => {
+        const itemObj = item as Record<string, unknown>;
+        return itemObj.kitchen === 'back';
+    });
+    
+    if (backKitchenItems.length === 0) {
+        console.log('No back kitchen items in order, skipping back kitchen print');
+        return true; // Return true because this is not an error
+    }
+    
     const printer = getPrinter('backKitchen');
-    console.log(`Printing to Back Kitchen Printer: ${printer}`, orderData);
+    console.log(`Printing ${backKitchenItems.length} back kitchen items to: ${printer}`, orderData);
     
     if (window.electronAPI) {
         try {
