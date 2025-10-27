@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "db:setup": "ts-node src/database/setup.ts",
     "db:seed": "ts-node src/database/seed.ts",
+    "db:migrate:edit-tracking": "ts-node src/database/migrateEditTracking.ts",
     "reset:tokens": "ts-node src/resetTokens.ts"
   },
   "keywords": [

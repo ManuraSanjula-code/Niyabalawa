@@ -6,6 +6,7 @@ interface ElectronAPI {
   getDefaultPrinter: () => Promise<PrinterInfo | null>;
   printToPrinter: (args: PrintArgs) => Promise<PrintResult>;
   testPrint: (printerName: string) => Promise<PrintResult>;
+  measureSignal: () => Promise<number>;
 }
 
 interface PrinterInfo {

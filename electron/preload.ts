@@ -45,6 +45,10 @@ const electronAPI = {
     console.log('📞 Calling testPrint from renderer...');
     return ipcRenderer.invoke('test-print', printerName);
   },
+
+  measureSignal: (): Promise<number> => {
+    return ipcRenderer.invoke('measure-signal');
+  },
 };
 
 console.log('🔗 Exposing electronAPI to window object...');

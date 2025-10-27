@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ChildProcess, spawn } from 'child_process';
@@ -206,6 +206,9 @@ const createWindow = () => {
 // App lifecycle
 app.whenReady().then(async () => {
   console.log('🎬 Electron app is ready');
+  
+  // Remove the default menu bar (File, Edit, View, Window, Help)
+  Menu.setApplicationMenu(null);
   
   // Start backend server first
   try {
@@ -450,6 +453,34 @@ ipcMain.handle('test-print', async (_event, printerName: string) => {
       message: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
+});
+
+/**
+ * Measure network signal strength by testing latency to a remote server
+ */
+ipcMain.handle('measure-signal', async (): Promise<number> => {
+  const start = performance.now();
+  try {
+    await fetch('https://www.google.com/favicon.ico', {
+      method: 'HEAD',
+      cache: 'no-cache',
+      mode: 'no-cors'
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Signal measurement failed:', error);
+    }
+    return 10; // Very poor signal if fetch fails
+  }
+  const latency = performance.now() - start;
+
+  // Calculate signal strength based on latency
+  if (latency < 50) return 100;
+  if (latency < 100) return 80;
+  if (latency < 200) return 60;
+  if (latency < 400) return 40;
+  if (latency < 800) return 20;
+  return 10;
 });
 
 /**

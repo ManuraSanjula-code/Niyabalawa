@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface NetworkInfo {
     online: boolean;
@@ -23,11 +23,29 @@ const NetworkStatus = () => {
 
     // Measure actual signal strength via network performance test
     const measureSignalStrength = async (): Promise<number> => {
+        // Try to use Electron IPC for background measurement first
+        if (window.electronAPI?.measureSignal) {
+            try {
+                const latency = await window.electronAPI.measureSignal();
+                if (latency < 50) return 100;
+                if (latency < 100) return 80;
+                if (latency < 200) return 60;
+                if (latency < 400) return 40;
+                if (latency < 800) return 20;
+                return 10;
+            } catch (error) {
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('IPC signal measurement failed, falling back to fetch:', error);
+                }
+            }
+        }
+
+        // Fallback to direct fetch (only in main thread if IPC not available)
         try {
             const startTime = performance.now();
 
             // Small fetch request to measure actual network response
-            const response = await fetch('https://www.google.com/favicon.ico', {
+            await fetch('https://www.google.com/favicon.ico', {
                 method: 'HEAD',
                 cache: 'no-cache',
                 mode: 'no-cors'
@@ -52,7 +70,9 @@ const NetworkStatus = () => {
             if (latency < 800) return 20;
             return 10;
         } catch (error) {
-            console.log('Could not measure signal strength:', error);
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Could not measure signal strength:', error);
+            }
             return 75; // Default to 75% if measurement fails
         }
     };
@@ -93,106 +113,39 @@ const NetworkStatus = () => {
         }
     };
 
-    useEffect(() => {
-        const updateNetworkInfo = async () => {
-            // Get connection info from navigator
+    const lastUpdateRef = useRef(0);
+
+    const updateNetworkInfo = useCallback(async () => {
+        const now = Date.now();
+        if (now - lastUpdateRef.current < 10000) return; // throttle: skip if <10s
+        lastUpdateRef.current = now;
+
+        try {
             const connection = (navigator as any).connection ||
                 (navigator as any).mozConnection ||
                 (navigator as any).webkitConnection;
 
-            // Try to get network name
-            let networkName = 'Unknown';
-            let ssid: string | null = null;
-
-            try {
-                // Detect platform
-                const userAgent = navigator.userAgent.toLowerCase();
-                const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-                const isDesktop = !isMobile;
-                const isMacOS = /mac os x/i.test(userAgent);
-                const isWindows = /windows/i.test(userAgent);
-                const isLinux = /linux/i.test(userAgent) && !isMobile;
-
-                // Check connection type from API
-                const connectionType = connection?.type;
-                const downlink = connection?.downlink || 0;
-                const effectiveType = connection?.effectiveType || 'unknown';
-
-                // Try to get actual WiFi SSID
-                ssid = await getWiFiSSID();
-
-                // Primary detection: Check if browser exposes connection type
-                if (connectionType === 'wifi') {
-                    networkName = ssid || 'WiFi';
-                } else if (connectionType === 'ethernet') {
-                    networkName = 'Ethernet';
-                } else if (connectionType === 'cellular') {
-                    networkName = 'Mobile Data';
-                } else if (!navigator.onLine) {
-                    networkName = 'Offline';
-                } else {
-                    // Secondary detection: Use heuristics based on platform
-                    if (isMacOS && isDesktop) {
-                        networkName = ssid || 'WiFi';
-                    } else if (isWindows && isDesktop) {
-                        networkName = downlink > 50 ? 'Ethernet' : (ssid || 'WiFi');
-                    } else if (isLinux && isDesktop) {
-                        networkName = downlink > 50 ? 'Ethernet' : (ssid || 'WiFi');
-                    } else if (isDesktop) {
-                        if (downlink === 0 && effectiveType === 'unknown') {
-                            networkName = ssid || 'WiFi';
-                        } else if (downlink > 50) {
-                            networkName = 'Ethernet';
-                        } else {
-                            networkName = ssid || 'WiFi';
-                        }
-                    } else if (isMobile) {
-                        if (downlink > 15 || effectiveType === '4g') {
-                            networkName = ssid || 'WiFi';
-                        } else if (downlink > 0) {
-                            networkName = 'Mobile Data';
-                        } else {
-                            networkName = effectiveType === '4g' ? 'Mobile Data' : (ssid || 'WiFi');
-                        }
-                    } else {
-                        networkName = 'Connected';
-                    }
-                }
-            } catch (error) {
-                console.log('Could not detect network name:', error);
-                const userAgent = navigator.userAgent.toLowerCase();
-                const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-                networkName = navigator.onLine ? (isMobile ? 'Mobile Data' : 'WiFi') : 'Offline';
-            }
-
-            // Measure actual signal strength
+            const ssid = await getWiFiSSID();
             const signalStrength = navigator.onLine ? await measureSignalStrength() : 0;
 
-            // Only update state if values actually changed to prevent unnecessary re-renders
-            setNetworkInfo(prev => {
-                const newInfo = {
-                    online: navigator.onLine,
-                    effectiveType: connection?.effectiveType || 'unknown',
-                    downlink: connection?.downlink || 0,
-                    rtt: connection?.rtt || 0,
-                    networkName: networkName,
-                    ssid: ssid,
-                    signalStrength: signalStrength
-                };
-                
-                // Check if anything actually changed
-                if (
-                    prev.online === newInfo.online &&
-                    prev.networkName === newInfo.networkName &&
-                    Math.abs(prev.signalStrength - newInfo.signalStrength) < 10 // Ignore small signal changes
-                ) {
-                    return prev; // No change, prevent re-render
-                }
-                
-                return newInfo;
-            });
-        };
+            setNetworkInfo(prev => ({
+                ...prev,
+                online: navigator.onLine,
+                effectiveType: connection?.effectiveType || 'unknown',
+                downlink: connection?.downlink || 0,
+                rtt: connection?.rtt || 0,
+                networkName: ssid || 'Connected',
+                ssid,
+                signalStrength
+            }));
+        } catch (err) {
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Network status update error:', err);
+            }
+        }
+    }, []);
 
+    useEffect(() => {
         // Initial update
         updateNetworkInfo();
 
@@ -209,8 +162,8 @@ const NetworkStatus = () => {
             connection.addEventListener('change', updateNetworkInfo);
         }
 
-        // Update every 30 seconds to get real-time data (reduced to prevent input disruption)
-        const interval = setInterval(updateNetworkInfo, 30000);
+        // Update every 10 minutes to get real-time data (reduced to prevent input disruption)
+        const interval = setInterval(updateNetworkInfo, 600000);
 
         return () => {
             window.removeEventListener('online', updateNetworkInfo);
@@ -220,7 +173,7 @@ const NetworkStatus = () => {
             }
             clearInterval(interval);
         };
-    }, []);
+    }, [updateNetworkInfo]);
 
     // Calculate signal bars (0-5) from signal strength percentage
     const getSignalBars = (): number => {
@@ -338,4 +291,4 @@ const NetworkStatus = () => {
     );
 };
 
-export default NetworkStatus;
+export default React.memo(NetworkStatus);

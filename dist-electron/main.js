@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, Menu, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
@@ -155,6 +155,7 @@ const createWindow = () => {
 };
 app.whenReady().then(async () => {
   console.log("🎬 Electron app is ready");
+  Menu.setApplicationMenu(null);
   try {
     await startBackendServer();
   } catch (error) {
@@ -332,6 +333,28 @@ ipcMain.handle("test-print", async (_event, printerName) => {
       message: error instanceof Error ? error.message : "Unknown error"
     };
   }
+});
+ipcMain.handle("measure-signal", async () => {
+  const start = performance.now();
+  try {
+    await fetch("https://www.google.com/favicon.ico", {
+      method: "HEAD",
+      cache: "no-cache",
+      mode: "no-cors"
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.log("Signal measurement failed:", error);
+    }
+    return 10;
+  }
+  const latency = performance.now() - start;
+  if (latency < 50) return 100;
+  if (latency < 100) return 80;
+  if (latency < 200) return 60;
+  if (latency < 400) return 40;
+  if (latency < 800) return 20;
+  return 10;
 });
 function generatePrintHTML(content, type) {
   const styles = `
