@@ -17,18 +17,19 @@ export class OrderService {
     try {
       await client.query('BEGIN');
 
-      // Generate token
-      const tokenResponse = await tokenService.generateToken(frontendId);
+  // Generate token (tokenResponse.tokenNumber is stored in DB, displayToken is shown to users)
+  const tokenResponse = await tokenService.generateToken(frontendId);
 
       // Determine initial status based on order type
       const status = orderType === 'dine-in' ? 'pending' : 'paid';
 
       // Insert order
+      // Store DB-unique token (includes date prefix) to avoid duplicates across days
       const orderResult = await client.query(
         `INSERT INTO orders (token_number, order_type, status, items, total, frontend_id)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [tokenResponse.displayToken, orderType, status, JSON.stringify(items), total, frontendId]
+        [tokenResponse.tokenNumber, orderType, status, JSON.stringify(items), total, frontendId]
       );
 
       const order = orderResult.rows[0];
@@ -54,9 +55,10 @@ export class OrderService {
 
       await client.query('COMMIT');
 
-      console.log(`✅ Created order ${tokenResponse.displayToken} (${orderType})`);
+  console.log(`✅ Created order ${tokenResponse.displayToken} (${orderType})`);
 
-      return this.formatOrder(order);
+  // Return order formatted for frontend (tokenNumber will be the display token)
+  return this.formatOrder(order, tokenResponse.displayToken);
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('❌ Error creating order:', error);
@@ -86,8 +88,8 @@ export class OrderService {
         params.push(limit);
       }
 
-      const result = await pool.query(query, params);
-      return result.rows.map(this.formatOrder);
+  const result = await pool.query(query, params);
+        return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting all orders:', error);
       return [];
@@ -105,7 +107,7 @@ export class OrderService {
          ORDER BY created_at DESC`
       );
 
-      return result.rows.map(this.formatOrder);
+        return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting pending orders:', error);
       return [];
@@ -117,8 +119,9 @@ export class OrderService {
    */
   async getOrderByToken(tokenNumber: string): Promise<Order | null> {
     try {
+      // Accept either full DB token (with date prefix) or simple display token (e.g., "1")
       const result = await pool.query(
-        `SELECT * FROM orders WHERE token_number = $1`,
+        `SELECT * FROM orders WHERE token_number = $1 OR token_number LIKE '%' || '-' || $1 OR token_number LIKE '%' || '@' || $1`,
         [tokenNumber]
       );
 
@@ -146,9 +149,9 @@ export class OrderService {
     try {
       await client.query('BEGIN');
 
-      // Get current order to store original items
+      // Get current order to store original items. Accept display or DB token formats.
       const currentOrder = await client.query(
-        `SELECT * FROM orders WHERE token_number = $1`,
+        `SELECT * FROM orders WHERE token_number = $1 OR token_number LIKE '%' || '-' || $1 OR token_number LIKE '%' || '@' || $1`,
         [tokenNumber]
       );
 
@@ -164,7 +167,7 @@ export class OrderService {
       const result = await client.query(
         `UPDATE orders
          SET items = $1, total = $2, updated_at = NOW(), original_items = $3, is_edited = true
-         WHERE token_number = $4
+         WHERE token_number = $4 OR token_number LIKE '%' || '-' || $4 OR token_number LIKE '%' || '@' || $4
          RETURNING *`,
         [JSON.stringify(items), total, JSON.stringify(originalItems), tokenNumber]
       );
@@ -218,7 +221,7 @@ export class OrderService {
       const result = await pool.query(
         `UPDATE orders
          SET status = 'paid', completed_at = NOW(), updated_at = NOW()
-         WHERE token_number = $1
+         WHERE token_number = $1 OR token_number LIKE '%' || '-' || $1 OR token_number LIKE '%' || '@' || $1
          RETURNING *`,
         [tokenNumber]
       );
@@ -244,7 +247,7 @@ export class OrderService {
       const result = await pool.query(
         `UPDATE orders
          SET status = 'cancelled', updated_at = NOW()
-         WHERE token_number = $1
+         WHERE token_number = $1 OR token_number LIKE '%' || '-' || $1 OR token_number LIKE '%' || '@' || $1
          RETURNING *`,
         [tokenNumber]
       );
@@ -273,7 +276,7 @@ export class OrderService {
 
       // Get order ID
       const orderResult = await client.query(
-        `SELECT id FROM orders WHERE token_number = $1`,
+        `SELECT id FROM orders WHERE token_number = $1 OR token_number LIKE '%' || '-' || $1 OR token_number LIKE '%' || '@' || $1`,
         [tokenNumber]
       );
 
@@ -346,12 +349,12 @@ export class OrderService {
     try {
       const result = await pool.query(
         `SELECT * FROM orders
-         WHERE created_at >= $1 AND created_at < $2
+         WHERE created_at >= $1 AND created_at <= $2
          ORDER BY created_at DESC`,
         [startDate, endDate]
       );
 
-      return result.rows.map(this.formatOrder);
+        return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting orders by date range:', error);
       return [];
@@ -359,12 +362,59 @@ export class OrderService {
   }
 
   /**
+   * Get orders for a specific date interpreted in Asia/Kolkata timezone.
+   * This avoids timezone mismatches by converting created_at to India local date
+   * and comparing the YYYY-MM-DD string.
+   */
+  async getOrdersByDate(date: string): Promise<Order[]> {
+    try {
+      console.log(`🔍 Querying orders for date: ${date} (Asia/Kolkata timezone)`);
+
+      // Since created_at is stored in server local time (IST), extract date directly
+      const result = await pool.query(
+        `SELECT * FROM orders
+         WHERE to_char(created_at, 'YYYY-MM-DD') = $1
+         ORDER BY created_at DESC`,
+        [date]
+      );
+
+      console.log(`📊 Found ${result.rows.length} orders for date ${date}`);
+
+      return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
+    } catch (error) {
+      console.error('❌ Error getting orders by date:', error);
+      return [];
+    }
+  }
+
+  /**
    * Format database order to Order type
    */
-  private formatOrder(dbOrder: Record<string, unknown>): Order {
+  /**
+   * Format a DB order to the frontend Order shape.
+   * If overrideDisplayToken is provided (from generateToken) use it; otherwise
+   * try to extract the short display token from the stored token_number.
+   */
+  private formatOrder(dbOrder: Record<string, unknown>, overrideDisplayToken?: string): Order {
+    const rawToken = (dbOrder.token_number as string) || '';
+
+    // If caller provided display token (from tokenService), prefer it
+    let displayToken = overrideDisplayToken;
+
+    if (!displayToken) {
+      if (rawToken.includes('@')) {
+        displayToken = rawToken.split('@').pop() || rawToken;
+      } else if (rawToken.includes('-')) {
+        displayToken = rawToken.split('-').pop() || rawToken;
+      } else {
+        displayToken = rawToken;
+      }
+    }
+
     return {
       id: dbOrder.id as string,
-      tokenNumber: dbOrder.token_number as string,
+      // tokenNumber returned to frontend should be the short/display token
+      tokenNumber: displayToken || (rawToken as string),
       orderType: dbOrder.order_type as 'dine-in' | 'take-away',
       status: dbOrder.status as 'pending' | 'paid' | 'completed' | 'cancelled',
       items: dbOrder.items as CartItem[],

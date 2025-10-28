@@ -34,7 +34,8 @@ export const connectRedis = async () => {
 export const redisHelpers = {
   // Increment token counter (atomic operation)
   incrementTokenCounter: async (): Promise<number> => {
-    const today = new Date().toISOString().split('T')[0];
+    const timezone = process.env.TOKEN_TIMEZONE || 'Asia/Kolkata';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
     const key = `token_counter:${today}`;
     const count = await redisClient.incr(key);
     // Set expiry to end of day + 1 day (cleanup old counters)
@@ -44,7 +45,8 @@ export const redisHelpers = {
 
   // Get current token count
   getTokenCounter: async (): Promise<number> => {
-    const today = new Date().toISOString().split('T')[0];
+    const timezone = process.env.TOKEN_TIMEZONE || 'Asia/Kolkata';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
     const key = `token_counter:${today}`;
     const count = await redisClient.get(key);
     return count ? parseInt(count) : 0;
@@ -55,7 +57,8 @@ export const redisHelpers = {
     if (!redisClient.isOpen) {
       throw new Error('Redis client is not connected');
     }
-    const today = new Date().toISOString().split('T')[0];
+    const timezone = process.env.TOKEN_TIMEZONE || 'Asia/Kolkata';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
     const key = `token_counter:${today}`;
     await redisClient.set(key, '0');
   },

@@ -240,14 +240,33 @@ router.delete('/', async (req: Request, res: Response) => {
 router.get('/date/:date', async (req: Request, res: Response) => {
   try {
     const { date } = req.params;
-    const startDate = `${date} 00:00:00`;
-    const endDate = `${date} 23:59:59`;
+    console.log(`📅 Order History request for date: ${date}`);
 
-    const orders = await orderService.getOrdersByDateRange(startDate, endDate);
+    // Use server helper that interprets the provided date in Asia/Kolkata timezone
+    // and returns all orders whose created_at falls on that India-local date.
+    const orders = await orderService.getOrdersByDate(date);
+
+    console.log(`📋 Returning ${orders.length} orders for date ${date}`);
     res.json(orders);
   } catch (error) {
     console.error('Error getting orders by date:', error);
     res.status(500).json({ error: 'Failed to get orders' });
+  }
+});
+
+/**
+ * GET /api/orders/debug/all
+ * Debug: Get all orders (temporary)
+ */
+router.get('/debug/all', async (req: Request, res: Response) => {
+  try {
+    const orders = await orderService.getAllOrders();
+    console.log(`🐛 Debug: Total orders in DB: ${orders.length}`);
+    orders.forEach(o => console.log(`  - ${o.tokenNumber} at ${o.createdAt}`));
+    res.json({ total: orders.length, orders });
+  } catch (error) {
+    console.error('Error getting debug orders:', error);
+    res.status(500).json({ error: 'Failed to get debug orders' });
   }
 });
 

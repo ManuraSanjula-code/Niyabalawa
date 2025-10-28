@@ -1,5 +1,6 @@
+// components/PendingOrders.tsx
 import React, { useState } from 'react';
-import { Search, Clock, Edit, DollarSign, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Clock, Edit, DollarSign, Trash2, ChevronLeft, ChevronRight, Loader } from 'lucide-react';
 import { PendingOrder } from '../types';
 
 interface PendingOrdersProps {
@@ -7,14 +8,18 @@ interface PendingOrdersProps {
     onLoadOrder: (tokenNumber: string) => void;
     onDeleteOrder: (tokenNumber: string) => void;
     onClose: () => void;
+    isLoading?: boolean;
+    hasPendingOperations?: boolean;
 }
 
 const PendingOrders: React.FC<PendingOrdersProps> = ({
-                                                         pendingOrders,
-                                                         onLoadOrder,
-                                                         onDeleteOrder,
-                                                         onClose
-                                                     }) => {
+                                                                         pendingOrders,
+                                                                         onLoadOrder,
+                                                                         onDeleteOrder,
+                                                                         onClose,
+                                                                         isLoading = false,
+                                                                         hasPendingOperations = false
+                                                                     }) => {
     const [searchToken, setSearchToken] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 5;
@@ -36,14 +41,15 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
     };
 
     const handleLoadOrder = (tokenNumber: string) => {
-        onLoadOrder(tokenNumber);
-        onClose();
+        if (!isLoading) {
+            onLoadOrder(tokenNumber);
+            onClose();
+        }
     };
 
     const handleDeleteOrder = (tokenNumber: string) => {
-        if (confirm(`Are you sure you want to delete order ${tokenNumber}? This action cannot be undone.`)) {
+        if (!isLoading && confirm(`Are you sure you want to delete order ${tokenNumber}? This action cannot be undone.`)) {
             onDeleteOrder(tokenNumber);
-            // Adjust current page if we deleted the last item on the page
             if (currentOrders.length === 1 && currentPage > 1) {
                 setCurrentPage(currentPage - 1);
             }
@@ -76,14 +82,25 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                             <Clock className="text-white" size={24} />
                             <div>
                                 <h2 className="text-xl font-bold text-white">Pending Orders</h2>
-                                <p className="text-purple-100 text-sm">
-                                    {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found
-                                </p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-purple-100 text-sm">
+                                        {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found
+                                    </p>
+                                    {(isLoading || hasPendingOperations) && (
+                                        <div className="flex items-center gap-1">
+                                            <Loader className="text-purple-200 animate-spin" size={14} />
+                                            <span className="text-purple-200 text-xs">
+                                                {hasPendingOperations ? 'Syncing...' : 'Loading...'}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         <button
                             onClick={onClose}
-                            className="text-white hover:bg-white/20 rounded-lg px-3 py-1 transition-colors"
+                            className="text-white hover:bg-white/20 rounded-lg px-3 py-1 transition-colors disabled:opacity-50"
+                            disabled={isLoading}
                         >
                             ✕ Close
                         </button>
@@ -99,14 +116,21 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                             placeholder="Search by token number..."
                             value={searchToken}
                             onChange={(e) => handleSearchChange(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                            className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none disabled:opacity-50"
+                            disabled={isLoading}
                         />
                     </div>
                 </div>
 
                 {/* Pending Orders List */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    {currentOrders.length === 0 ? (
+                    {isLoading && currentOrders.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
+                            <Loader className="animate-spin mb-3" size={48} />
+                            <p className="text-center font-medium">Loading pending orders...</p>
+                            <p className="text-sm text-gray-400 mt-1">Please wait while we fetch your data</p>
+                        </div>
+                    ) : currentOrders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
                             <Clock size={48} className="mb-3 opacity-50" />
                             <p className="text-center font-medium">
@@ -126,16 +150,16 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
                                             <div className="flex items-center gap-2 mb-1">
-                        <span className="bg-purple-100 text-purple-700 font-bold px-3 py-1 rounded-full text-sm border border-purple-300">
-                          {order.tokenNumber}
-                        </span>
+                                                <span className="bg-purple-100 text-purple-700 font-bold px-3 py-1 rounded-full text-sm border border-purple-300">
+                                                    {order.tokenNumber}
+                                                </span>
                                                 <span className={`text-xs font-semibold px-2 py-1 rounded ${
                                                     order.orderType === 'dine-in'
                                                         ? 'bg-blue-100 text-blue-700'
                                                         : 'bg-orange-100 text-orange-700'
                                                 }`}>
-                          {order.orderType === 'dine-in' ? '🍽️ Dine In' : '📦 Take Away'}
-                        </span>
+                                                    {order.orderType === 'dine-in' ? '🍽️ Dine In' : '📦 Take Away'}
+                                                </span>
                                             </div>
                                             <p className="text-xs text-gray-500">
                                                 {new Date(order.timestamp).toLocaleString()}
@@ -153,10 +177,10 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                                         <div className="space-y-1 max-h-24 overflow-y-auto">
                                             {order.items.map((item, idx) => (
                                                 <div key={idx} className="flex justify-between text-xs text-gray-700">
-                          <span>
-                            {item.quantity}x {item.name}
-                              {item.portion && <span className="text-blue-600 font-semibold ml-1">({item.portion})</span>}
-                          </span>
+                                                    <span>
+                                                        {item.quantity}x {item.name}
+                                                        {item.portion && <span className="text-blue-600 font-semibold ml-1">({item.portion})</span>}
+                                                    </span>
                                                     <span className="font-medium">Rs. {(item.price * item.quantity).toFixed(2)}</span>
                                                 </div>
                                             ))}
@@ -167,24 +191,27 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => handleLoadOrder(order.tokenNumber)}
-                                            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2"
+                                            disabled={isLoading}
+                                            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <Edit size={16} />
-                                            Edit Order
+                                            {isLoading ? <Loader className="animate-spin" size={16} /> : <Edit size={16} />}
+                                            {isLoading ? 'Loading...' : 'Edit Order'}
                                         </button>
                                         <button
                                             onClick={() => handleLoadOrder(order.tokenNumber)}
-                                            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2"
+                                            disabled={isLoading}
+                                            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            <DollarSign size={16} />
-                                            Pay Now
+                                            {isLoading ? <Loader className="animate-spin" size={16} /> : <DollarSign size={16} />}
+                                            {isLoading ? 'Processing...' : 'Pay Now'}
                                         </button>
                                         <button
                                             onClick={() => handleDeleteOrder(order.tokenNumber)}
-                                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center"
+                                            disabled={isLoading}
+                                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 py-2 rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                                             title="Delete Order"
                                         >
-                                            <Trash2 size={16} />
+                                            {isLoading ? <Loader className="animate-spin" size={16} /> : <Trash2 size={16} />}
                                         </button>
                                     </div>
                                 </div>
@@ -199,14 +226,17 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                         <div className="flex items-center justify-between">
                             <div className="text-sm text-gray-600">
                                 Showing {startIndex + 1}-{Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length}
+                                {hasPendingOperations && (
+                                    <span className="ml-2 text-purple-600 text-xs">• Syncing changes...</span>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={goToPreviousPage}
-                                    disabled={currentPage === 1}
+                                    disabled={currentPage === 1 || isLoading}
                                     className={`p-2 rounded-lg transition-colors ${
-                                        currentPage === 1
+                                        currentPage === 1 || isLoading
                                             ? 'text-gray-300 cursor-not-allowed'
                                             : 'text-gray-600 hover:bg-gray-100'
                                     }`}
@@ -217,7 +247,6 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
 
                                 <div className="flex items-center gap-1">
                                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                                        // Show first page, last page, current page, and pages around current
                                         const showPage =
                                             page === 1 ||
                                             page === totalPages ||
@@ -239,11 +268,12 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
                                             <button
                                                 key={page}
                                                 onClick={() => goToPage(page)}
+                                                disabled={isLoading}
                                                 className={`min-w-[36px] px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
                                                     currentPage === page
                                                         ? 'bg-purple-600 text-white'
                                                         : 'text-gray-600 hover:bg-gray-100'
-                                                }`}
+                                                } disabled:opacity-50 disabled:cursor-not-allowed`}
                                             >
                                                 {page}
                                             </button>
@@ -253,9 +283,9 @@ const PendingOrders: React.FC<PendingOrdersProps> = ({
 
                                 <button
                                     onClick={goToNextPage}
-                                    disabled={currentPage === totalPages}
+                                    disabled={currentPage === totalPages || isLoading}
                                     className={`p-2 rounded-lg transition-colors ${
-                                        currentPage === totalPages
+                                        currentPage === totalPages || isLoading
                                             ? 'text-gray-300 cursor-not-allowed'
                                             : 'text-gray-600 hover:bg-gray-100'
                                     }`}

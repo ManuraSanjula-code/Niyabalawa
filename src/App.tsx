@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
 import Cart from './components/Cart';
-import PendingOrders from './components/PendingOrders';
+import EnhancedPendingOrders from './components/PendingOrders';
+import EnhancedOrderHistory from './components/OrderHistory';
 import AdminPanel from './components/AdminPanel';
 import ProductManagement from './components/ProductManagement';
 import Settings from './components/Settings';
-import OrderHistory from './components/OrderHistory';
 import RoleSelector, { UserRole } from './components/RoleSelector';
 import { useBilling } from './hooks/useBilling';
+import { useBackgroundData } from './hooks/useBackgroundData';
 import { socketService } from './services/socket';
-import { menuApi, refreshApi } from './services/api';
+import { menuApi, refreshApi, orderApi } from './services/api';
 import { printTokenNumber, printToBackKitchen, printBill } from './utils/printerUtils';
 import type { MenuItem, Order, CartItem } from './types';
-import NetworkStatus from "./components/NetworkStatus.tsx";
+import NetworkStatus from "./components/NetworkStatus";
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import NetworkOverlay from './components/NetworkOverlay';
+import DataLoadingOverlay from './components/DataLoadingOverlay';
 
 function App() {
     const {
@@ -21,7 +23,7 @@ function App() {
         tokenNumber,
         total,
         orderType,
-        pendingOrders,
+        pendingOrders: localPendingOrders,
         addToCart,
         updateQuantity,
         removeFromCart,
@@ -35,32 +37,33 @@ function App() {
         deletePendingOrder
     } = useBilling();
 
-    // Monitor network status in real-time
+    // Enhanced background data management
+    const {
+        menuItems,
+        orders,
+        pendingOrders: backgroundPendingOrders,
+        loading,
+        progress,
+        refreshAllData,
+        loadMenuItemsInBackground,
+        createOrder,
+        updateOrder,
+        deleteOrder,
+        completeOrder,
+        hasPendingOperations
+    } = useBackgroundData();
+
+    // Monitor network status
     const { isOnline, wasOffline } = useNetworkStatus();
 
     // Role-based access control
     const [currentRole, setCurrentRole] = useState<UserRole>('cashier');
     const [showRoleSelector, setShowRoleSelector] = useState(false);
 
-    // Function to clear/cancel cart
-    const clearCart = () => {
-        if (cart.length > 0) {
-            const confirmed = window.confirm('Are you sure you want to cancel this order and clear the cart?');
-            if (confirmed) {
-                // Clear all items from cart
-                cart.forEach(item => removeFromCart(item.id));
-                // Reset editing state if applicable
-                if (isEditingPending) {
-                    setIsEditingPending(false);
-                    setCurrentEditingToken(null);
-                    setOriginalOrderItems([]);
-                }
-            }
-        }
-    };
+    // Combine local and background pending orders
+    const combinedPendingOrders = [...localPendingOrders, ...backgroundPendingOrders];
 
-    const [activeTab, setActiveTab] = useState<'addons' | 'desserts'>('addons');
-    const [kitchenFilter, setKitchenFilter] = useState<'all' | 'front' | 'back'>('all');
+    // State management - REMOVED all tab/filter states
     const [showPendingOrders, setShowPendingOrders] = useState(false);
     const [showAdminPanel, setShowAdminPanel] = useState(false);
     const [showProductManagement, setShowProductManagement] = useState(false);
@@ -71,185 +74,88 @@ function App() {
     const [originalOrderItems, setOriginalOrderItems] = useState<CartItem[]>([]);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Load menu items from backend
-    const [mainDishes, setMainDishes] = useState<MenuItem[]>([]);
-    const [riceTypes, setRiceTypes] = useState<MenuItem[]>([]);
-    const [addons, setAddons] = useState<MenuItem[]>([]);
-    const [desserts, setDesserts] = useState<MenuItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Add loading states for button actions
+    const [isPrintingToken, setIsPrintingToken] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+    const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
 
-    // Load menu items from backend on component mount
-    useEffect(() => {
-        loadMenuItems();
-    }, []);
+    // Separate menu items by category from background data
+    const mainDishes = menuItems.filter((item: MenuItem) => item.category === 'main');
+    const riceTypes = menuItems.filter((item: MenuItem) => item.category === 'rice');
+    const addons = menuItems.filter((item: MenuItem) => item.category === 'addon');
+    const desserts = menuItems.filter((item: MenuItem) =>
+        item.category === 'dessert' || item.category === 'drinks'
+    );
 
-    const loadMenuItems = async () => {
-        try {
-            setLoading(true);
-            const allMenuItems = await menuApi.getAllMenuItems();
-
-            // Separate items by category
-            const mains = allMenuItems.filter((item: MenuItem) => item.category === 'main');
-            const rice = allMenuItems.filter((item: MenuItem) => item.category === 'rice');
-
-            // Filter by actual category from database
-            const addonItems = allMenuItems.filter((item: MenuItem) => item.category === 'addon');
-            const dessertItems = allMenuItems.filter((item: MenuItem) =>
-                item.category === 'dessert' || item.category === 'drinks'
-            );
-
-            setMainDishes(mains);
-            setRiceTypes(rice);
-            setAddons(addonItems);
-            setDesserts(dessertItems);
-        } catch (error) {
-            console.error('Error loading menu items:', error);
-            // Fallback to local data if backend fails
-            const { mainDishes: localMains, riceTypes: localRice, addons: localAddons } = await import('./data/menuData');
-            setMainDishes(localMains);
-            setRiceTypes(localRice);
-            setAddons(localAddons);
-            setDesserts([]);
-        } finally {
-            setLoading(false);
+    // Enhanced clear cart function
+    const clearCart = () => {
+        if (cart.length > 0) {
+            const confirmed = window.confirm('Are you sure you want to cancel this order and clear the cart?');
+            if (confirmed) {
+                cart.forEach(item => removeFromCart(item.id));
+                if (isEditingPending) {
+                    setIsEditingPending(false);
+                    setCurrentEditingToken(null);
+                    setOriginalOrderItems([]);
+                }
+            }
         }
     };
 
+    // Enhanced refresh function
     const handleRefreshAllData = async () => {
         try {
             setIsRefreshing(true);
-            console.log('Refreshing all data...');
+            console.log('Refreshing all data using refreshApi...');
 
-            // Use the new refresh API
-            const refreshedData = await refreshApi.refreshAllData();
+            await refreshAllData();
 
-            // Update menu items
-            const mains = refreshedData.menuItems.filter((item: MenuItem) => item.category === 'main');
-            const rice = refreshedData.menuItems.filter((item: MenuItem) => item.category === 'rice');
-            const addonItems = refreshedData.menuItems.filter((item: MenuItem) => item.category === 'addon');
-            const dessertItems = refreshedData.menuItems.filter((item: MenuItem) =>
-                item.category === 'dessert' || item.category === 'drinks'
-            );
-
-            setMainDishes(mains);
-            setRiceTypes(rice);
-            setAddons(addonItems);
-            setDesserts(dessertItems);
-
-            // Optionally update pending orders if you have a state for them
-            // setPendingOrders(refreshedData.pendingOrders);
-
-            console.log('Data refreshed successfully!');
+            console.log('Background data refresh completed');
 
             // Show success notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-20 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn';
-            notification.innerHTML = '✓ Data refreshed successfully!';
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
-
+            showNotification('✅ Data refreshed successfully!', 'success');
         } catch (error) {
             console.error('Error refreshing data:', error);
-
-            // Show error notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-20 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn';
-            notification.innerHTML = '✗ Failed to refresh data';
-            document.body.appendChild(notification);
-
-            setTimeout(() => {
-                notification.remove();
-            }, 3000);
+            showNotification('✗ Failed to refresh data', 'error');
         } finally {
             setIsRefreshing(false);
         }
     };
 
+    // Notification helper
+    const showNotification = (message: string, type: 'success' | 'error') => {
+        const notification = document.createElement('div');
+        notification.className = `fixed top-20 right-4 ${
+            type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        } text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn`;
+        notification.innerHTML = message;
+        document.body.appendChild(notification);
 
-    // Initialize socket connection on component mount
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    };
+
+    // Initialize socket connection
     useEffect(() => {
         socketService.connect();
 
-        // Subscribe to real-time events
-        socketService.onNewOrder((order) => {
-            console.log('New order received:', order);
-        });
-
-        socketService.onOrderUpdate((order) => {
-            console.log('Order updated:', order);
-        });
-
-        socketService.onOrderComplete((data) => {
-            console.log('Order completed:', data);
-        });
-
         return () => {
-            // Clean up socket listeners on unmount
             socketService.removeAllListeners();
         };
     }, []);
 
+    // Enhanced order handlers that work during data loading with loading protection
     const handlePrintToken = async () => {
-        const order = await savePendingOrder();
-        if (order) {
+        if (isPrintingToken || isProcessingPayment || isUpdatingOrder) return;
 
-            // Print token number using configured printer
-
-            /*printTokenNumber({
-                token: order.tokenNumber,
-                tokenNumber: order.tokenNumber,
-                orderType: order.orderType,
-                orderId: order.id,
-                timestamp: new Date().toISOString()
-            });*/
-
-            // Print kitchen order for back kitchen
-            printToBackKitchen({
-                token: order.tokenNumber,
-                tokenNumber: order.tokenNumber,
-                items: order.items,
-                orderType: order.orderType,
-                timestamp: new Date().toISOString()
-            });
-
-            alert(`Token ${order.tokenNumber} printed!\n\nThis order is saved as pending.\nCustomer can pay later using this token.\n\n✓ Token printed\n✓ Kitchen order printed`);
-            setIsEditingPending(false);
-            setCurrentEditingToken(null);
-        }
-    };
-
-    const handlePayNow = async () => {
-        if (isEditingPending && currentEditingToken) {
-            await completePendingOrder(currentEditingToken);
-
-            // Print bill using configured printer
-            printBill({
-                tokenNumber: currentEditingToken,
-                items: cart,
-                total,
-                orderType,
-                timestamp: new Date().toISOString()
-            });
-
-            alert(`Payment completed for Token ${currentEditingToken}!\n\nOrder has been finalized.`);
-            setIsEditingPending(false);
-            setCurrentEditingToken(null);
-        } else {
-            const order = await savePendingOrder(); // Save and get token
+        try {
+            setIsPrintingToken(true);
+            const order = await savePendingOrder();
             if (order) {
-                // Print token number for customer
-                printTokenNumber({
-                    token: order.tokenNumber,
-                    tokenNumber: order.tokenNumber,
-                    orderType: order.orderType,
-                    orderId: order.id,
-                    timestamp: new Date().toISOString()
-                });
+                // Notify background data system
+                createOrder(order);
 
-                // Print kitchen order for back kitchen
                 printToBackKitchen({
                     token: order.tokenNumber,
                     tokenNumber: order.tokenNumber,
@@ -258,19 +164,83 @@ function App() {
                     timestamp: new Date().toISOString()
                 });
 
-                await completePendingOrder(order.tokenNumber); // Then immediately complete it
+                showNotification(`Token ${order.tokenNumber} printed and saved!`, 'success');
+                setIsEditingPending(false);
+                setCurrentEditingToken(null);
+            }
+        } catch (error) {
+            console.error('Error printing token:', error);
+            showNotification('✗ Failed to print token', 'error');
+        } finally {
+            setIsPrintingToken(false);
+        }
+    };
 
-                // Print bill using configured printer
+    const handlePayNow = async () => {
+        if (isProcessingPayment || isPrintingToken || isUpdatingOrder) return;
+
+        try {
+            setIsProcessingPayment(true);
+            if (isEditingPending && currentEditingToken) {
+                await completePendingOrder(currentEditingToken);
+                // Notify background data system
+                const completedOrder = await orderApi.getOrderByToken(currentEditingToken);
+                completeOrder(completedOrder);
+
                 printBill({
-                    tokenNumber: order.tokenNumber,
+                    tokenNumber: currentEditingToken,
                     items: cart,
                     total,
                     orderType,
                     timestamp: new Date().toISOString()
                 });
 
-                alert(`Payment completed!\n\nToken: ${order.tokenNumber}\nTotal: Rs. ${total.toFixed(2)}\n\n✓ Token printed\n✓ Kitchen order printed\n✓ Bill printed`);
+                showNotification(`Payment completed for Token ${currentEditingToken}!`, 'success');
+                setIsEditingPending(false);
+                setCurrentEditingToken(null);
+            } else {
+                const order = await savePendingOrder();
+                if (order) {
+                    // Notify background data system
+                    createOrder(order);
+
+                    printTokenNumber({
+                        token: order.tokenNumber,
+                        tokenNumber: order.tokenNumber,
+                        orderType: order.orderType,
+                        orderId: order.id,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    printToBackKitchen({
+                        token: order.tokenNumber,
+                        tokenNumber: order.tokenNumber,
+                        items: order.items,
+                        orderType: order.orderType,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    await completePendingOrder(order.tokenNumber);
+                    // Update background data
+                    const completedOrder = await orderApi.getOrderByToken(order.tokenNumber);
+                    completeOrder(completedOrder);
+
+                    printBill({
+                        tokenNumber: order.tokenNumber,
+                        items: cart,
+                        total,
+                        orderType,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    showNotification(`Payment completed for Token ${order.tokenNumber}!`, 'success');
+                }
             }
+        } catch (error) {
+            console.error('Error processing payment:', error);
+            showNotification('✗ Failed to process payment', 'error');
+        } finally {
+            setIsProcessingPayment(false);
         }
     };
 
@@ -283,125 +253,113 @@ function App() {
     };
 
     const handleEditOrderFromHistory = (order: Order) => {
-        // Load order into cart for editing using the new function
         loadOrderForEdit(order);
-
-        // Store original items to track what was removed
         setOriginalOrderItems([...order.items]);
-
-        // Set editing mode
         setIsEditingPending(true);
         setCurrentEditingToken(order.tokenNumber);
-
-        // Close order history modal
         setShowOrderHistory(false);
-
-        // Show notification
-        alert(`Order ${order.tokenNumber} loaded for editing!\n\nCurrent items have been loaded into the cart.\nYou can now add or remove items.\nClick "Update Order" when done.`);
+        showNotification(`Order ${order.tokenNumber} loaded for editing!`, 'success');
     };
 
     const handleUpdatePending = async () => {
-        if (currentEditingToken) {
-            // Find removed items
-            const currentCart = cart;
-            const removedItems = originalOrderItems.filter(originalItem =>
-                !currentCart.some(cartItem =>
-                    cartItem.id === originalItem.id &&
-                    cartItem.name === originalItem.name &&
-                    cartItem.quantity === originalItem.quantity &&
-                    cartItem.riceType === originalItem.riceType
-                )
-            );
+        if (isUpdatingOrder || isPrintingToken || isProcessingPayment) return;
 
-            // Find added items
-            const addedItems = currentCart.filter(cartItem =>
-                !originalOrderItems.some(originalItem =>
-                    originalItem.id === cartItem.id &&
-                    originalItem.name === cartItem.name &&
-                    originalItem.quantity === cartItem.quantity &&
-                    originalItem.riceType === cartItem.riceType
-                )
-            );
+        try {
+            setIsUpdatingOrder(true);
+            if (currentEditingToken) {
+                const currentCart = cart;
+                const removedItems = originalOrderItems.filter(originalItem =>
+                    !currentCart.some(cartItem =>
+                        cartItem.id === originalItem.id &&
+                        cartItem.name === originalItem.name &&
+                        cartItem.quantity === originalItem.quantity &&
+                        cartItem.riceType === originalItem.riceType
+                    )
+                );
 
-            await updatePendingOrder(currentEditingToken);
+                const addedItems = currentCart.filter(cartItem =>
+                    !originalOrderItems.some(originalItem =>
+                        originalItem.id === cartItem.id &&
+                        originalItem.name === cartItem.name &&
+                        originalItem.quantity === cartItem.quantity &&
+                        originalItem.riceType === cartItem.riceType
+                    )
+                );
 
-            // Print updated token number
-            printTokenNumber({
-                token: currentEditingToken,
-                tokenNumber: currentEditingToken,
-                orderType: orderType,
-                timestamp: new Date().toISOString()
-            });
+                await updatePendingOrder(currentEditingToken);
+                // Notify background data system
+                const updatedOrder = await orderApi.getOrderByToken(currentEditingToken);
+                updateOrder(updatedOrder);
 
-            // Print updated kitchen order
-            printToBackKitchen({
-                token: currentEditingToken,
-                tokenNumber: currentEditingToken,
-                items: currentCart,
-                orderType: orderType,
-                timestamp: new Date().toISOString(),
-                isEdited: true,
-                originalItems: originalOrderItems
-            });
-
-            // Print updated bill with edit history
-            printBill({
-                tokenNumber: currentEditingToken,
-                items: currentCart,
-                total,
-                orderType,
-                timestamp: new Date().toISOString(),
-                isEdited: true,
-                originalItems: originalOrderItems
-            });
-
-            // Build detailed update message
-            let message = `Order ${currentEditingToken} has been updated!\n\n`;
-
-            if (removedItems.length > 0) {
-                message += '🗑️ REMOVED ITEMS:\n';
-                removedItems.forEach(item => {
-                    message += `  ❌ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
+                printTokenNumber({
+                    token: currentEditingToken,
+                    tokenNumber: currentEditingToken,
+                    orderType: orderType,
+                    timestamp: new Date().toISOString()
                 });
-                message += '\n';
-            }
 
-            if (addedItems.length > 0) {
-                message += '✨ ADDED ITEMS:\n';
-                addedItems.forEach(item => {
-                    message += `  ✓ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
+                printToBackKitchen({
+                    token: currentEditingToken,
+                    tokenNumber: currentEditingToken,
+                    items: currentCart,
+                    orderType: orderType,
+                    timestamp: new Date().toISOString(),
+                    isEdited: true,
+                    originalItems: originalOrderItems
                 });
-                message += '\n';
+
+                printBill({
+                    tokenNumber: currentEditingToken,
+                    items: currentCart,
+                    total,
+                    orderType,
+                    timestamp: new Date().toISOString(),
+                    isEdited: true,
+                    originalItems: originalOrderItems
+                });
+
+                let message = `Order ${currentEditingToken} has been updated!\n\n`;
+                if (removedItems.length > 0) {
+                    message += '🗑️ REMOVED ITEMS:\n';
+                    removedItems.forEach(item => {
+                        message += `  ❌ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
+                    });
+                    message += '\n';
+                }
+                if (addedItems.length > 0) {
+                    message += '✨ ADDED ITEMS:\n';
+                    addedItems.forEach(item => {
+                        message += `  ✓ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
+                    });
+                    message += '\n';
+                }
+                if (removedItems.length === 0 && addedItems.length === 0) {
+                    message += 'No items were added or removed.\nQuantities or details may have changed.\n\n';
+                }
+                message += '📄 Printing:\n';
+                message += '  ✓ Updated Token\n';
+                message += '  ✓ Updated Kitchen Order\n';
+                message += '  ✓ Updated Bill with Edit History';
+
+                alert(message);
+                setIsEditingPending(false);
+                setCurrentEditingToken(null);
+                setOriginalOrderItems([]);
             }
-
-            if (removedItems.length === 0 && addedItems.length === 0) {
-                message += 'No items were added or removed.\nQuantities or details may have changed.\n\n';
-            }
-
-            message += '📄 Printing:\n';
-            message += '  ✓ Updated Token\n';
-            message += '  ✓ Updated Kitchen Order\n';
-            message += '  ✓ Updated Bill with Edit History';
-
-            alert(message);
-
-            // Reset editing state and clear cart
-            setIsEditingPending(false);
-            setCurrentEditingToken(null);
-            setOriginalOrderItems([]);
+        } catch (error) {
+            console.error('Error updating order:', error);
+            showNotification('✗ Failed to update order', 'error');
+        } finally {
+            setIsUpdatingOrder(false);
         }
     };
 
-    if (loading) {
-        return (
-            <div className="h-screen bg-gray-100 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-lg font-semibold text-gray-700">Loading menu items...</p>
-                </div>
-            </div>
-        );
-    }
+    const handleDeletePendingOrder = (token: string) => {
+        deletePendingOrder(token);
+        // Notify background data system
+        deleteOrder(token);
+        showNotification(`Order ${token} deleted!`, 'success');
+    };
 
     return (
         <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
@@ -413,7 +371,7 @@ function App() {
                             <h1 className="text-sm font-bold text-white">Niyabalawa Restaurant</h1>
                             <p className="text-blue-100 text-xs">Set Menu Order System</p>
                         </div>
-                        {/* Role Indicator and Selector */}
+                        {/* Role and Status Indicators */}
                         <div className="flex items-center gap-2">
                             <div className="bg-white/20 backdrop-blur-sm rounded-md px-3 py-1 border border-white/30">
                                 <div className="flex items-center gap-2">
@@ -421,10 +379,20 @@ function App() {
                                     <span className="text-sm font-bold text-white capitalize">{currentRole}</span>
                                 </div>
                             </div>
+                            {(loading.all || hasPendingOperations) && (
+                                <div className="bg-yellow-500/20 backdrop-blur-sm rounded-md px-3 py-1 border border-yellow-300/30">
+                                    <div className="flex items-center gap-2">
+                    <span className="text-xs text-yellow-100 font-medium">
+                      {hasPendingOperations ? '🔄 Syncing...' : '📥 Loading...'}
+                    </span>
+                                    </div>
+                                </div>
+                            )}
                             <button
                                 onClick={() => setShowRoleSelector(true)}
                                 className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg font-semibold text-xs border border-white/30 transition-all duration-200"
                                 title="Change Role"
+                                disabled={loading.all}
                             >
                                 🔄 Switch Role
                             </button>
@@ -435,7 +403,8 @@ function App() {
                         {(currentRole === 'manager' || currentRole === 'admin') && (
                             <button
                                 onClick={() => setShowSettings(true)}
-                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                                disabled={loading.all}
                             >
                                 <span>⚙️</span>
                                 <span>Settings</span>
@@ -446,7 +415,8 @@ function App() {
                         {(currentRole === 'manager' || currentRole === 'admin') && (
                             <button
                                 onClick={() => setShowOrderHistory(true)}
-                                className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                                className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                                disabled={loading.all}
                             >
                                 <span>📊</span>
                                 <span>Order History</span>
@@ -457,7 +427,8 @@ function App() {
                         {currentRole === 'admin' && (
                             <button
                                 onClick={() => setShowAdminPanel(true)}
-                                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                                className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                                disabled={loading.all}
                             >
                                 <span>➕</span>
                                 <span>Add Product</span>
@@ -468,7 +439,8 @@ function App() {
                         {currentRole === 'admin' && (
                             <button
                                 onClick={() => setShowProductManagement(true)}
-                                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                                disabled={loading.all}
                             >
                                 <span>✏️</span>
                                 <span>Manage Products</span>
@@ -479,14 +451,15 @@ function App() {
                         {(currentRole === 'cashier' || currentRole === 'admin') && (
                             <button
                                 onClick={() => setShowPendingOrders(true)}
-                                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+                                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+                                disabled={loading.all}
                             >
                                 <span>📋</span>
                                 <span>Pending Orders</span>
-                                {pendingOrders.length > 0 && (
+                                {combinedPendingOrders.length > 0 && (
                                     <span className="bg-white text-orange-600 font-bold px-2 py-0.5 rounded-full text-xs">
-                  {pendingOrders.length}
-                </span>
+                    {combinedPendingOrders.length}
+                  </span>
                                 )}
                             </button>
                         )}
@@ -498,12 +471,12 @@ function App() {
                                 <span className="text-xl font-bold text-white">{tokenNumber}</span>
                             </div>
                         </div>
-                        
+
                         {/* Manager & Admin: Refresh Button */}
                         {(currentRole === 'manager' || currentRole === 'admin') && (
                             <button
                                 onClick={handleRefreshAllData}
-                                disabled={isRefreshing || !isOnline}
+                                disabled={isRefreshing || !isOnline || loading.all}
                                 className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Refresh all data from server"
                             >
@@ -529,161 +502,124 @@ function App() {
                 </div>
             </header>
 
-            {/* Main Content - 3 Column Layout */}
-            <div className="flex-1 overflow-hidden p-2 pb-0">
+            {/* Main Content with Enhanced Loading Overlay */}
+            <div className="flex-1 overflow-hidden p-2 pb-0 relative">
+                {/* Enhanced Data Loading Overlay */}
+                <DataLoadingOverlay
+                    loading={loading.all}
+                    progress={Math.max(progress.menu, progress.orders, progress.pending)}
+                    message={hasPendingOperations ? "Syncing order changes..." : "Loading restaurant data..."}
+                />
+
                 <div className="h-full grid grid-cols-12 gap-2">
-                    {/* LEFT SECTION - Set Menu (Main Dishes with Rice) */}
+                    {/* LEFT SECTION - Set Menu (Main Dishes) - NO FILTERS */}
                     <div className="col-span-4 flex flex-col overflow-hidden">
                         <div className="bg-white rounded-lg shadow-lg flex flex-col h-full overflow-hidden">
                             <div className="bg-gradient-to-r from-green-600 to-green-700 px-3 py-1.5 flex-shrink-0">
                                 <h2 className="text-sm font-bold text-white">SET MENU (Rice & Curry)</h2>
                                 <p className="text-xs text-green-100">Complete meal with white rice</p>
-                            </div>
-
-                            {/* Kitchen Filter */}
-                            <div className="flex gap-1 p-2 bg-gray-50 border-b border-gray-200">
-                                <button
-                                    onClick={() => setKitchenFilter('all')}
-                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
-                                        kitchenFilter === 'all'
-                                            ? 'bg-green-600 text-white shadow'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100'
-                                    }`}
-                                >
-                                    All
-                                </button>
-                                <button
-                                    onClick={() => setKitchenFilter('front')}
-                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
-                                        kitchenFilter === 'front'
-                                            ? 'bg-blue-600 text-white shadow'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100'
-                                    }`}
-                                >
-                                    🍳 Front
-                                </button>
-                                <button
-                                    onClick={() => setKitchenFilter('back')}
-                                    className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded transition-all ${
-                                        kitchenFilter === 'back'
-                                            ? 'bg-orange-600 text-white shadow'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100'
-                                    }`}
-                                >
-                                    🔥 Back
-                                </button>
+                                {loading.menu && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className="w-full bg-green-800 rounded-full h-1">
+                                            <div
+                                                className="bg-green-300 h-1 rounded-full transition-all duration-300"
+                                                style={{ width: `${progress.menu}%` }}
+                                            ></div>
+                                        </div>
+                                        <span className="text-xs text-green-200">{progress.menu}%</span>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-2">
-                                <table className="w-full text-xs">
-                                    <thead className="sticky top-0 bg-white border-b border-gray-300">
-                                    <tr>
-                                        <th className="text-left py-1 px-1.5 font-bold text-gray-700 text-xs">Main Item</th>
-                                        <th className="text-center py-1 px-1 font-bold text-blue-600 w-16 text-xs">Half</th>
-                                        <th className="text-center py-1 px-1 font-bold text-green-600 w-16 text-xs">Full</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {mainDishes
-                                        .filter(item => kitchenFilter === 'all' || item.kitchen === kitchenFilter)
-                                        .map((item) => (
-                                        <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
-                                            <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">
-                                                {item.name}
-                                                {kitchenFilter === 'all' && (
-                                                    <span className={`ml-1 text-xs ${item.kitchen === 'front' ? 'text-blue-600' : 'text-orange-600'}`}>
-                                                        {item.kitchen === 'front' ? '🍳' : '🔥'}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="py-1 px-1 text-center">
-                                                <button
-                                                    onClick={() => addToCart(item, 'half')}
-                                                    className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
-                                                >
-                                                    {item.halfPrice}
-                                                </button>
-                                            </td>
-                                            <td className="py-1 px-1 text-center">
-                                                <button
-                                                    onClick={() => addToCart(item, 'full')}
-                                                    className="bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
-                                                >
-                                                    {item.fullPrice}
-                                                </button>
-                                            </td>
+                                {mainDishes.length === 0 && !loading.menu ? (
+                                    <div className="h-full flex items-center justify-center">
+                                        <div className="text-center text-gray-400">
+                                            <p className="text-xl mb-2">🍽️</p>
+                                            <p className="font-medium">No menu items available</p>
+                                            <p className="text-sm mt-1">Check connection or refresh data</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <table className="w-full text-xs">
+                                        <thead className="sticky top-0 bg-white border-b border-gray-300">
+                                        <tr>
+                                            <th className="text-left py-1 px-1.5 font-bold text-gray-700 text-xs">Main Item</th>
+                                            <th className="text-center py-1 px-1 font-bold text-blue-600 w-16 text-xs">Half</th>
+                                            <th className="text-center py-1 px-1 font-bold text-green-600 w-16 text-xs">Full</th>
                                         </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                        {mainDishes.map((item) => (
+                                            <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                                                <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">
+                                                    {item.name}
+                                                    <span className={`ml-2 text-xs ${item.kitchen === 'front' ? 'text-blue-600' : 'text-orange-600'}`}>
+                              {item.kitchen === 'front' ? '🍳' : '🔥'}
+                            </span>
+                                                </td>
+                                                <td className="py-1 px-1 text-center">
+                                                    <button
+                                                        onClick={() => addToCart(item, 'half')}
+                                                        className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                        disabled={loading.menu}
+                                                    >
+                                                        {item.halfPrice}
+                                                    </button>
+                                                </td>
+                                                <td className="py-1 px-1 text-center">
+                                                    <button
+                                                        onClick={() => addToCart(item, 'full')}
+                                                        className="bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                        disabled={loading.menu}
+                                                    >
+                                                        {item.fullPrice}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                )}
                             </div>
                         </div>
                     </div>
 
-                    {/* MIDDLE SECTION - Add-ons & Desserts/Drinks with Tabs */}
+                    {/* MIDDLE SECTION - ALL ITEMS (Add-ons, Desserts, Drinks - NO TABS) */}
                     <div className="col-span-4 flex flex-col overflow-hidden">
                         <div className="bg-white rounded-lg shadow-lg flex flex-col h-full overflow-hidden">
-                            {/* Tab Headers - Like Book Pages */}
-                            <div className="flex border-b border-gray-200 bg-gray-50 flex-shrink-0">
-                                <button
-                                    onClick={() => setActiveTab('addons')}
-                                    className={`flex-1 py-2 px-3 font-bold text-xs transition-all duration-200 relative ${
-                                        activeTab === 'addons'
-                                            ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                                    style={{
-                                        clipPath: activeTab === 'addons' ? 'none' : 'polygon(0 0, 100% 0, 95% 100%, 0% 100%)',
-                                    }}
-                                >
-                                    <div className="flex items-center justify-center gap-1.5">
-                                        <span>🍗</span>
-                                        <span>ADD-ONS</span>
-                                    </div>
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab('desserts')}
-                                    className={`flex-1 py-2 px-3 font-bold text-xs transition-all duration-200 relative ${
-                                        activeTab === 'desserts'
-                                            ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                                    style={{
-                                        clipPath: activeTab === 'desserts' ? 'none' : 'polygon(5% 0, 100% 0, 100% 100%, 0% 100%)',
-                                    }}
-                                >
-                                    <div className="flex items-center justify-center gap-1.5">
-                                        <span>🍰</span>
-                                        <span>DESSERT / DRINKS</span>
-                                    </div>
-                                </button>
+                            {/* Single Header for All Items */}
+                            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-3 py-1.5 flex-shrink-0">
+                                <h2 className="text-sm font-bold text-white">ADD-ONS & EXTRAS</h2>
+                                <p className="text-xs text-purple-100">Extra proteins, sides, desserts & drinks</p>
                             </div>
 
-                            {/* Tab Content */}
-                            <div className="flex-1 overflow-hidden">
-                                {/* Add-ons Tab */}
-                                {activeTab === 'addons' && (
-                                    <div className="h-full flex flex-col animate-fadeIn">
-                                        <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-3 py-1 flex-shrink-0">
-                                            <p className="text-xs text-orange-100">Extra proteins, sides & add-ons to enhance your meal</p>
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto p-2">
+                            <div className="flex-1 overflow-y-auto">
+                                {/* Add-ons Section */}
+                                <div className="border-b border-gray-200">
+                                    <div className="bg-orange-50 px-3 py-1.5 border-b border-orange-200">
+                                        <h3 className="text-xs font-bold text-orange-700 flex items-center gap-1">
+                                            <span>🍗</span>
+                                            ADD-ONS
+                                        </h3>
+                                        <p className="text-xs text-orange-600">Extra proteins and sides</p>
+                                    </div>
+                                    <div className="p-2">
+                                        {addons.length === 0 && !loading.menu ? (
+                                            <div className="text-center text-gray-400 py-4">
+                                                <p className="text-sm">No add-ons available</p>
+                                            </div>
+                                        ) : (
                                             <table className="w-full text-xs">
-                                                <thead className="sticky top-0 bg-white border-b border-gray-300 z-10">
-                                                <tr>
-                                                    <th className="text-left py-1 px-1.5 font-bold text-gray-700 text-xs">Item</th>
-                                                    <th className="text-center py-1 px-1 font-bold text-orange-600 w-20 text-xs">Price</th>
-                                                </tr>
-                                                </thead>
                                                 <tbody>
                                                 {addons.map((item) => (
                                                     <tr key={item.id} className="border-b border-gray-100 hover:bg-orange-50 transition-colors">
                                                         <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">{item.name}</td>
-                                                        <td className="py-1 px-1 text-center">
+                                                        <td className="py-1 px-1 text-center w-20">
                                                             <button
                                                                 onClick={() => addToCart(item)}
                                                                 className="bg-orange-500 hover:bg-orange-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                                disabled={loading.menu}
                                                             >
                                                                 +{Number(item.price) || Number(item.halfPrice) || 0}
                                                             </button>
@@ -692,54 +628,87 @@ function App() {
                                                 ))}
                                                 </tbody>
                                             </table>
-                                        </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
-                                {/* Desserts/Drinks Tab */}
-                                {activeTab === 'desserts' && (
-                                    <div className="h-full flex flex-col animate-fadeIn">
-                                        <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-3 py-1 flex-shrink-0">
-                                            <p className="text-xs text-purple-100">Sweet treats and refreshing beverages</p>
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto p-2">
-                                            {desserts.length > 0 ? (
-                                                <table className="w-full text-xs">
-                                                    <thead className="sticky top-0 bg-white border-b border-gray-300 z-10">
-                                                    <tr>
-                                                        <th className="text-left py-1 px-1.5 font-bold text-gray-700 text-xs">Item</th>
-                                                        <th className="text-center py-1 px-1 font-bold text-purple-600 w-20 text-xs">Price</th>
-                                                    </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                    {desserts.map((item) => (
-                                                        <tr key={item.id} className="border-b border-gray-100 hover:bg-purple-50 transition-colors">
+                                {/* Desserts Section */}
+                                <div className="border-b border-gray-200">
+                                    <div className="bg-pink-50 px-3 py-1.5 border-b border-pink-200">
+                                        <h3 className="text-xs font-bold text-pink-700 flex items-center gap-1">
+                                            <span>🍰</span>
+                                            DESSERTS
+                                        </h3>
+                                        <p className="text-xs text-pink-600">Sweet treats and cakes</p>
+                                    </div>
+                                    <div className="p-2">
+                                        {desserts.filter(item => item.category === 'dessert').length === 0 && !loading.menu ? (
+                                            <div className="text-center text-gray-400 py-4">
+                                                <p className="text-sm">No desserts available</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full text-xs">
+                                                <tbody>
+                                                {desserts
+                                                    .filter(item => item.category === 'dessert')
+                                                    .map((item) => (
+                                                        <tr key={item.id} className="border-b border-gray-100 hover:bg-pink-50 transition-colors">
                                                             <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">{item.name}</td>
-                                                            <td className="py-1 px-1 text-center">
+                                                            <td className="py-1 px-1 text-center w-20">
                                                                 <button
                                                                     onClick={() => addToCart(item)}
-                                                                    className="bg-purple-500 hover:bg-purple-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                                    className="bg-pink-500 hover:bg-pink-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                                    disabled={loading.menu}
                                                                 >
                                                                     +{Number(item.price) || Number(item.halfPrice) || 0}
                                                                 </button>
                                                             </td>
                                                         </tr>
                                                     ))}
-                                                    </tbody>
-                                                </table>
-                                            ) : (
-                                                <div className="h-full flex items-center justify-center">
-                                                    <div className="text-center py-8 px-4">
-                                                        <div className="text-4xl mb-3">🍰🥤</div>
-                                                        <p className="text-sm font-semibold text-gray-600 mb-1">No desserts or drinks yet</p>
-                                                        <p className="text-xs text-gray-500">Use "Add Product" to add desserts and drinks</p>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                                </tbody>
+                                            </table>
+                                        )}
                                     </div>
-                                )}
+                                </div>
+
+                                {/* Drinks Section */}
+                                <div>
+                                    <div className="bg-blue-50 px-3 py-1.5 border-b border-blue-200">
+                                        <h3 className="text-xs font-bold text-blue-700 flex items-center gap-1">
+                                            <span>🥤</span>
+                                            DRINKS & BEVERAGES
+                                        </h3>
+                                        <p className="text-xs text-blue-600">Cold and hot beverages</p>
+                                    </div>
+                                    <div className="p-2">
+                                        {desserts.filter(item => item.category === 'drinks').length === 0 && !loading.menu ? (
+                                            <div className="text-center text-gray-400 py-4">
+                                                <p className="text-sm">No drinks available</p>
+                                            </div>
+                                        ) : (
+                                            <table className="w-full text-xs">
+                                                <tbody>
+                                                {desserts
+                                                    .filter(item => item.category === 'drinks')
+                                                    .map((item) => (
+                                                        <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                                                            <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">{item.name}</td>
+                                                            <td className="py-1 px-1 text-center w-20">
+                                                                <button
+                                                                    onClick={() => addToCart(item)}
+                                                                    className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
+                                                                    disabled={loading.menu}
+                                                                >
+                                                                    +{Number(item.price) || Number(item.halfPrice) || 0}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -761,12 +730,16 @@ function App() {
                             riceTypes={riceTypes}
                             onChangeRiceType={changeRiceType}
                             onCancel={clearCart}
+                            isLoading={loading.all || hasPendingOperations}
+                            isPrintingToken={isPrintingToken}
+                            isProcessingPayment={isProcessingPayment}
+                            isUpdatingOrder={isUpdatingOrder}
                         />
                     </div>
                 </div>
             </div>
 
-            {/* BOTTOM - Rice Type Selector (Changes Base Rice) */}
+            {/* Footer */}
             <footer className="bg-white border-t-2 border-gray-300 shadow-2xl px-3 py-2 flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <div className="flex-shrink-0">
@@ -779,6 +752,7 @@ function App() {
                                 key={item.id}
                                 onClick={() => addToCart(item)}
                                 className="group bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg px-4 py-1.5 shadow-md hover:shadow-lg transition-all duration-200 flex-shrink-0"
+                                disabled={loading.menu}
                             >
                                 <div className="text-center">
                                     <div className="font-bold text-xs">{item.name}</div>
@@ -790,48 +764,39 @@ function App() {
                 </div>
             </footer>
 
-            {/* Settings Modal */}
-            {showSettings && (
-                <Settings
-                    onClose={() => setShowSettings(false)}
-                />
-            )}
-
-            {/* Pending Orders Modal */}
+            {/* Enhanced Modals */}
+            {showSettings && <Settings onClose={() => setShowSettings(false)} />}
             {showPendingOrders && (
-                <PendingOrders
-                    pendingOrders={pendingOrders}
+                <EnhancedPendingOrders
+                    pendingOrders={combinedPendingOrders}
                     onLoadOrder={handleLoadPendingOrder}
-                    onDeleteOrder={deletePendingOrder}
+                    onDeleteOrder={handleDeletePendingOrder}
                     onClose={() => setShowPendingOrders(false)}
+                    isLoading={loading.pending || loading.all}
+                    hasPendingOperations={hasPendingOperations}
                 />
             )}
-
-            {/* Admin Panel Modal */}
             {showAdminPanel && (
                 <AdminPanel
                     onClose={() => setShowAdminPanel(false)}
-                    onProductAdded={loadMenuItems}
+                    onProductAdded={loadMenuItemsInBackground}
                 />
             )}
-
-            {/* Product Management Modal */}
             {showProductManagement && (
                 <ProductManagement
                     onClose={() => setShowProductManagement(false)}
-                    onProductUpdated={loadMenuItems}
+                    onProductUpdated={loadMenuItemsInBackground}
                 />
             )}
-
-            {/* Order History Modal */}
             {showOrderHistory && (
-                <OrderHistory
+                <EnhancedOrderHistory
                     onClose={() => setShowOrderHistory(false)}
                     onEditOrder={handleEditOrderFromHistory}
+                    isLoading={loading.orders || loading.all}
+                    hasPendingOperations={hasPendingOperations}
+                    onRefresh={handleRefreshAllData}
                 />
             )}
-
-            {/* Role Selector Modal */}
             {showRoleSelector && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowRoleSelector(false)}>
                     <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full mx-4 relative" onClick={(e) => e.stopPropagation()}>
@@ -856,7 +821,6 @@ function App() {
                 </div>
             )}
 
-            {/* Network Status Overlay - Freezes UI when offline */}
             <NetworkOverlay isOnline={isOnline} wasOffline={wasOffline} />
         </div>
     );

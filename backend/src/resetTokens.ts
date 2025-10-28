@@ -2,7 +2,8 @@ import { pool } from './database/postgres';
 
 async function resetTokens() {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const timezone = process.env.TOKEN_TIMEZONE || 'Asia/Kolkata';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
     
     // Delete today's tokens
     const result = await pool.query(

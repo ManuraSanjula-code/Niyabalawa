@@ -10,6 +10,7 @@
     "db:setup": "ts-node src/database/setup.ts",
     "db:seed": "ts-node src/database/seed.ts",
     "db:migrate:edit-tracking": "ts-node src/database/migrateEditTracking.ts",
+    "db:migrate:token-length": "ts-node src/database/migrateTokenLength.ts",
     "reset:tokens": "ts-node src/resetTokens.ts"
   },
   "keywords": [

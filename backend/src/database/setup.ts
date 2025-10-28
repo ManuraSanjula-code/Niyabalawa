@@ -27,7 +27,7 @@ const createTables = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        token_number VARCHAR(10) UNIQUE NOT NULL,
+        token_number VARCHAR(25) UNIQUE NOT NULL,
         order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('dine-in', 'take-away')),
         status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'completed', 'cancelled')),
         items JSONB NOT NULL,
@@ -60,7 +60,7 @@ const createTables = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS token_log (
         id SERIAL PRIMARY KEY,
-        token_number VARCHAR(10) NOT NULL,
+        token_number VARCHAR(25) NOT NULL,
         generated_at TIMESTAMP DEFAULT NOW(),
         frontend_id VARCHAR(50),
         date DATE NOT NULL DEFAULT CURRENT_DATE

@@ -17,6 +17,11 @@ interface CartProps {
     riceTypes?: MenuItem[];
     onChangeRiceType?: (cartItemId: string, riceName: string, ricePrice: number) => void;
     onCancel?: () => void;
+    isLoading?: boolean;
+    // Add these new props for button loading states
+    isPrintingToken?: boolean;
+    isProcessingPayment?: boolean;
+    isUpdatingOrder?: boolean;
 }
 
 const Cart: React.FC<CartProps> = ({
@@ -33,7 +38,12 @@ const Cart: React.FC<CartProps> = ({
                                        onUpdatePending,
                                        riceTypes = [],
                                        onChangeRiceType,
-                                       onCancel
+                                       onCancel,
+                                       isLoading = false,
+                                       // New loading props
+                                       isPrintingToken = false,
+                                       isProcessingPayment = false,
+                                       isUpdatingOrder = false
                                    }) => {
     const handleRemoveItem = (itemId: string, itemName: string) => {
         if (isEditingPending) {
@@ -47,6 +57,9 @@ const Cart: React.FC<CartProps> = ({
             onRemoveItem(itemId);
         }
     };
+
+    // Helper to check if any action is in progress
+    const isAnyActionInProgress = isPrintingToken || isProcessingPayment || isUpdatingOrder || isLoading;
 
     return (
         <div className="bg-white rounded-lg shadow-lg h-full flex flex-col overflow-hidden">
@@ -70,6 +83,7 @@ const Cart: React.FC<CartProps> = ({
                             onClick={onCancel}
                             className="ml-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-2 py-1 rounded-md text-xs font-semibold transition-all duration-200 flex items-center gap-1"
                             title="Cancel and clear cart"
+                            disabled={isAnyActionInProgress}
                         >
                             <X size={14} />
                             Cancel
@@ -98,6 +112,7 @@ const Cart: React.FC<CartProps> = ({
                                     ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
+                            disabled={isAnyActionInProgress}
                         >
                             🍽️ Dine In
                         </button>
@@ -108,6 +123,7 @@ const Cart: React.FC<CartProps> = ({
                                     ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-md'
                                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
+                            disabled={isAnyActionInProgress}
                         >
                             📦 Take Away
                         </button>
@@ -146,7 +162,7 @@ const Cart: React.FC<CartProps> = ({
                           </span>
                                                 )}
                                                 {/* Rice type selector for set menu items */}
-                                                {item.category === 'main' && item.riceType && onChangeRiceType && (
+                                                {/*{item.category === 'main' && item.riceType && onChangeRiceType && (
                                                     <div className="mt-1.5">
                                                         <select
                                                             value={item.riceType}
@@ -160,6 +176,7 @@ const Cart: React.FC<CartProps> = ({
                                                                 }
                                                             }}
                                                             className="w-full text-xs border border-amber-300 rounded px-1.5 py-0.5 bg-amber-50 text-amber-900 font-semibold focus:outline-none focus:border-amber-500 cursor-pointer hover:bg-amber-100 transition-colors"
+                                                            disabled={isAnyActionInProgress}
                                                         >
                                                             {riceTypes.map((rice) => {
                                                                 const whiteRice = riceTypes.find(r => r.name === 'White Rice');
@@ -172,7 +189,7 @@ const Cart: React.FC<CartProps> = ({
                                                             })}
                                                         </select>
                                                     </div>
-                                                )}
+                                                )}*/}
                                             </div>
                                         </div>
                                     </div>
@@ -191,7 +208,7 @@ const Cart: React.FC<CartProps> = ({
                                         <button
                                             onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
                                             className="w-5 h-5 rounded bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition-colors font-bold text-xs"
-                                            disabled={item.quantity <= 1}
+                                            disabled={item.quantity <= 1 || isAnyActionInProgress}
                                         >
                                             <Minus size={10} />
                                         </button>
@@ -199,6 +216,7 @@ const Cart: React.FC<CartProps> = ({
                                         <button
                                             onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                                             className="w-5 h-5 rounded bg-green-50 hover:bg-green-100 text-green-600 flex items-center justify-center transition-colors font-bold text-xs"
+                                            disabled={isAnyActionInProgress}
                                         >
                                             <Plus size={10} />
                                         </button>
@@ -208,6 +226,7 @@ const Cart: React.FC<CartProps> = ({
                                         onClick={() => handleRemoveItem(item.id, item.name)}
                                         className="text-red-500 hover:text-white hover:bg-red-500 px-1.5 py-0.5 rounded transition-all duration-200 text-xs font-semibold"
                                         title={isEditingPending ? "Remove item (will be marked as removed)" : "Remove item"}
+                                        disabled={isAnyActionInProgress}
                                     >
                                         <Trash2 size={12} className="inline" />
                                     </button>
@@ -227,39 +246,82 @@ const Cart: React.FC<CartProps> = ({
                     </div>
                 </div>
 
+                {/* Show loading indicator if any action is in progress */}
+                {isAnyActionInProgress && (
+                    <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center justify-center gap-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                            <span className="text-xs text-blue-700 font-medium">
+                                {isPrintingToken && "🖨️ Printing token..."}
+                                {isProcessingPayment && "💵 Processing payment..."}
+                                {isUpdatingOrder && "💾 Updating order..."}
+                                {isLoading && "⏳ Loading..."}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 {/* Different buttons based on order type and edit mode */}
                 {isEditingPending ? (
                     <div className="space-y-1.5">
                         <button
                             onClick={onUpdatePending}
-                            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400"
-                            disabled={items.length === 0}
+                            disabled={items.length === 0 || isAnyActionInProgress}
+                            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2"
                         >
-                            💾 UPDATE ORDER
+                            {isUpdatingOrder ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    UPDATING...
+                                </>
+                            ) : (
+                                '💾 UPDATE ORDER'
+                            )}
                         </button>
                         <button
                             onClick={onPayNow}
-                            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400"
-                            disabled={items.length === 0}
+                            disabled={items.length === 0 || isAnyActionInProgress}
+                            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2"
                         >
-                            💵 PAY NOW
+                            {isProcessingPayment ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    PROCESSING...
+                                </>
+                            ) : (
+                                '💵 PAY NOW'
+                            )}
                         </button>
                     </div>
                 ) : orderType === 'dine-in' ? (
                     <button
                         onClick={onPrintToken}
-                        className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400"
-                        disabled={items.length === 0}
+                        disabled={items.length === 0 || isAnyActionInProgress}
+                        className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2"
                     >
-                        🎫 PRINT TOKEN (Dine In)
+                        {isPrintingToken ? (
+                            <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                PRINTING...
+                            </>
+                        ) : (
+                            '🎫 PRINT TOKEN (Dine In)'
+                        )}
                     </button>
                 ) : (
                     <button
                         onClick={onPayNow}
-                        className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400"
-                        disabled={items.length === 0}
+                        disabled={items.length === 0 || isAnyActionInProgress}
+                        className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white py-2 px-3 rounded-lg font-bold text-sm shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2"
                     >
-                        💰 PAY NOW (Take Away)
+                        {isProcessingPayment ? (
+                            <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                PROCESSING...
+                            </>
+                        ) : (
+                            '💰 PAY NOW (Take Away)'
+                        )}
                     </button>
                 )}
 

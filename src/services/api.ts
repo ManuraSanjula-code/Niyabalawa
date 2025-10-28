@@ -31,6 +31,14 @@ export const orderApi = {
   },
 
   /**
+   * Get orders for a specific date (YYYY-MM-DD)
+   */
+  async getOrdersByDate(date: string): Promise<Order[]> {
+    const response = await api.get(`/orders/date/${date}`);
+    return response.data;
+  },
+
+  /**
    * Get all pending orders
    */
   async getPendingOrders(): Promise<PendingOrder[]> {
