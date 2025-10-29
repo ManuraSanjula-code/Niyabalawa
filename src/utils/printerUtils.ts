@@ -286,7 +286,7 @@ const formatKitchenOrder = (orderData: unknown): string => {
 };
 
 /**
- * Format bill data for receipt printing (72mm thermal printer)
+ * Format bill data for receipt printing (68mm thermal printer)
  */
 const formatBill = (billData: unknown): string => {
     if (!billData || typeof billData !== 'object') return 'No bill data';
@@ -298,8 +298,8 @@ const formatBill = (billData: unknown): string => {
     const isEdited = bill.isEdited as boolean;
     const originalItems = bill.originalItems as unknown[] | undefined;
     
-    // 72mm width (~32 characters at 12pt) - optimized for thermal printers
-    let content = `<div style="width: 72mm; font-size: 11px; font-family: 'Courier New', monospace; padding: 2mm;">`;
+    // 68mm width (~30 characters at 12pt) - optimized for thermal printers
+    let content = `<div style="width: 68mm; font-size: 11px; font-family: 'Courier New', monospace; padding: 2mm;">`;
     
     // Header
     content += `<div style="text-align: center; margin-bottom: 8px;">`;
