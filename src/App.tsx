@@ -162,6 +162,14 @@ function App() {
                 // Notify background data system
                 createOrder(order);
 
+                printTokenNumber({
+                    token: order.tokenNumber,
+                    tokenNumber: order.tokenNumber,
+                    orderType: order.orderType,
+                    orderId: order.id,
+                    timestamp: new Date().toISOString()
+                });
+
                 printToBackKitchen({
                     token: order.tokenNumber,
                     tokenNumber: order.tokenNumber,
