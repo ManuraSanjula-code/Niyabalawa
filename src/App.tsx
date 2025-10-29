@@ -79,8 +79,14 @@ function App() {
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
     const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
 
+    // Kitchen filter for set menu
+    const [kitchenFilter, setKitchenFilter] = useState<'all' | 'front' | 'back'>('all');
+
     // Separate menu items by category from background data
     const mainDishes = menuItems.filter((item: MenuItem) => item.category === 'main');
+    const filteredMainDishes = mainDishes.filter((item: MenuItem) => 
+        kitchenFilter === 'all' || item.kitchen === kitchenFilter
+    );
     const riceTypes = menuItems.filter((item: MenuItem) => item.category === 'rice');
     const addons = menuItems.filter((item: MenuItem) => item.category === 'addon');
     const desserts = menuItems.filter((item: MenuItem) =>
@@ -512,12 +518,47 @@ function App() {
                 />
 
                 <div className="h-full grid grid-cols-12 gap-2">
-                    {/* LEFT SECTION - Set Menu (Main Dishes) - NO FILTERS */}
+                    {/* LEFT SECTION - Set Menu (Main Dishes) */}
                     <div className="col-span-4 flex flex-col overflow-hidden">
                         <div className="bg-white rounded-lg shadow-lg flex flex-col h-full overflow-hidden">
                             <div className="bg-gradient-to-r from-green-600 to-green-700 px-3 py-1.5 flex-shrink-0">
                                 <h2 className="text-sm font-bold text-white">SET MENU (Rice & Curry)</h2>
                                 <p className="text-xs text-green-100">Complete meal with white rice</p>
+                                
+                                {/* Kitchen Filter Buttons */}
+                                <div className="flex gap-1 mt-2">
+                                    <button
+                                        onClick={() => setKitchenFilter('all')}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                            kitchenFilter === 'all'
+                                                ? 'bg-white text-green-700 shadow-sm'
+                                                : 'bg-green-500 text-white hover:bg-green-400'
+                                        }`}
+                                    >
+                                        All
+                                    </button>
+                                    <button
+                                        onClick={() => setKitchenFilter('front')}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                            kitchenFilter === 'front'
+                                                ? 'bg-white text-green-700 shadow-sm'
+                                                : 'bg-green-500 text-white hover:bg-green-400'
+                                        }`}
+                                    >
+                                        🍳 Front
+                                    </button>
+                                    <button
+                                        onClick={() => setKitchenFilter('back')}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                            kitchenFilter === 'back'
+                                                ? 'bg-white text-green-700 shadow-sm'
+                                                : 'bg-green-500 text-white hover:bg-green-400'
+                                        }`}
+                                    >
+                                        🔥 Back
+                                    </button>
+                                </div>
+                                
                                 {loading.menu && (
                                     <div className="flex items-center gap-2 mt-1">
                                         <div className="w-full bg-green-800 rounded-full h-1">
@@ -532,7 +573,7 @@ function App() {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-2">
-                                {mainDishes.length === 0 && !loading.menu ? (
+                                {filteredMainDishes.length === 0 && !loading.menu ? (
                                     <div className="h-full flex items-center justify-center">
                                         <div className="text-center text-gray-400">
                                             <p className="text-xl mb-2">🍽️</p>
@@ -550,7 +591,7 @@ function App() {
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        {mainDishes.map((item) => (
+                                        {filteredMainDishes.map((item) => (
                                             <tr key={item.id} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
                                                 <td className="py-1 px-1.5 font-medium text-gray-800 text-xs">
                                                     {item.name}
@@ -570,10 +611,14 @@ function App() {
                                                 <td className="py-1 px-1 text-center">
                                                     <button
                                                         onClick={() => addToCart(item, 'full')}
-                                                        className="bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded text-xs font-bold w-full transition-colors"
-                                                        disabled={loading.menu}
+                                                        className={`px-2 py-0.5 rounded text-xs font-bold w-full transition-colors ${
+                                                            item.fullPrice 
+                                                                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        }`}
+                                                        disabled={loading.menu || !item.fullPrice}
                                                     >
-                                                        {item.fullPrice}
+                                                        {item.fullPrice || '-'}
                                                     </button>
                                                 </td>
                                             </tr>
