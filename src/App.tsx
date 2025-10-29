@@ -297,13 +297,6 @@ function App() {
                 const updatedOrder = await orderApi.getOrderByToken(currentEditingToken);
                 updateOrder(updatedOrder);
 
-                printTokenNumber({
-                    token: currentEditingToken,
-                    tokenNumber: currentEditingToken,
-                    orderType: orderType,
-                    timestamp: new Date().toISOString()
-                });
-
                 printToBackKitchen({
                     token: currentEditingToken,
                     tokenNumber: currentEditingToken,
@@ -343,7 +336,6 @@ function App() {
                     message += 'No items were added or removed.\nQuantities or details may have changed.\n\n';
                 }
                 message += '📄 Printing:\n';
-                message += '  ✓ Updated Token\n';
                 message += '  ✓ Updated Kitchen Order\n';
                 message += '  ✓ Updated Bill with Edit History';
 
