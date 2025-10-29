@@ -82,6 +82,7 @@ export const useBilling = () => {
           quantity: 1,
           portion,
           category: item.category,
+          kitchen: item.kitchen, // Include kitchen property for printing
           // Set default rice type for main dishes (set menu)
           riceType: item.category === 'main' ? 'White Rice' : undefined,
           ricePrice: 0
