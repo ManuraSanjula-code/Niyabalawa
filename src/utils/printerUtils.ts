@@ -299,7 +299,7 @@ const formatBill = (billData: unknown): string => {
     const originalItems = bill.originalItems as unknown[] | undefined;
     
     // 68mm width (~30 characters at 12pt) - optimized for thermal printers
-    let content = `<div style="width: 68mm; font-size: 11px; font-family: 'Courier New', monospace; padding: 2mm;">`;
+    let content = `<div style="width: 66mm; font-size: 11px; font-family: 'Courier New', monospace; padding: 2mm;">`;
     
     // Header
     content += `<div style="text-align: center; margin-bottom: 8px;">`;
