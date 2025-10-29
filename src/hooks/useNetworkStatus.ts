@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
 export const useNetworkStatus = () => {
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isOnline, setIsOnline] = useState(false); // Start as offline, check immediately
     const [wasOffline, setWasOffline] = useState(false);
     const lastCheckRef = useRef(0);
 
@@ -11,7 +13,8 @@ export const useNetworkStatus = () => {
         lastCheckRef.current = now;
 
         try {
-            const response = await fetch('/api/health', {
+            const healthUrl = API_BASE_URL.replace('/api', '') + '/api/health';
+            const response = await fetch(healthUrl, {
                 method: 'HEAD',
                 cache: 'no-cache'
             });
@@ -52,6 +55,9 @@ export const useNetworkStatus = () => {
         // Add event listeners
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+
+        // Check connectivity immediately on mount
+        checkConnectivity();
 
         // Check connectivity every 10 minutes (reduced frequency to prevent input disruption)
         const interval = setInterval(checkConnectivity, 600000);
