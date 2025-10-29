@@ -327,50 +327,6 @@ const formatBill = (billData: unknown): string => {
     
     content += `<div style="border-bottom: 1px dashed #000; margin: 5px 0;"></div>`;
     
-    // Show removed items if order was edited
-    if (isEdited && originalItems && Array.isArray(originalItems)) {
-        const currentItems = bill.items as unknown[];
-        if (Array.isArray(currentItems)) {
-            const removedItems = originalItems.filter(origItem => {
-                const oItem = origItem as Record<string, unknown>;
-                return !currentItems.some(currItem => {
-                    const cItem = currItem as Record<string, unknown>;
-                    return cItem.id === oItem.id && 
-                           cItem.name === oItem.name &&
-                           cItem.quantity === oItem.quantity &&
-                           cItem.riceType === oItem.riceType;
-                });
-            });
-
-            if (removedItems.length > 0) {
-                content += `<div style="margin: 6px 0; font-size: 9px;">`;
-                content += `<div style="font-weight: bold; margin-bottom: 3px;">REMOVED ITEMS:</div>`;
-                removedItems.forEach((item: unknown) => {
-                    const itemObj = item as Record<string, unknown>;
-                    const price = Number(itemObj.price) || 0;
-                    const quantity = Number(itemObj.quantity) || 1;
-                    const itemTotal = price * quantity;
-                    
-                    content += `<div style="text-decoration: line-through; margin: 2px 0;">`;
-                    content += `<div style="display: flex; justify-content: space-between;">`;
-                    content += `<span>${itemObj.name || 'Unknown'}</span>`;
-                    content += `<span>x${quantity}</span>`;
-                    content += `</div>`;
-                    if (itemObj.riceType) {
-                        content += `<div style="font-size: 8px; padding-left: 4px;">Rice: ${itemObj.riceType}</div>`;
-                    }
-                    content += `<div style="display: flex; justify-content: space-between; padding-left: 8px;">`;
-                    content += `<span>@ Rs. ${price.toFixed(2)}</span>`;
-                    content += `<span>Rs. ${itemTotal.toFixed(2)}</span>`;
-                    content += `</div>`;
-                    content += `</div>`;
-                });
-                content += `</div>`;
-                content += `<div style="border-bottom: 1px dashed #000; margin: 5px 0;"></div>`;
-            }
-        }
-    }
-    
     // Items
     let calculatedTotal = 0;
     if (bill.items && Array.isArray(bill.items)) {
