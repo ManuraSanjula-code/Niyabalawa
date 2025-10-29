@@ -119,7 +119,7 @@ export const isPrinterConfigured = (): boolean => {
 };
 
 /**
- * Format order data for kitchen printing (72mm thermal printer)
+ * Format order data for kitchen printing (68mm thermal printer)
  */
 const formatKitchenOrder = (orderData: unknown): string => {
     if (!orderData || typeof orderData !== 'object') return 'No order data';
@@ -131,8 +131,8 @@ const formatKitchenOrder = (orderData: unknown): string => {
     const isEdited = order.isEdited as boolean;
     const originalItems = order.originalItems as unknown[] | undefined;
     
-    // 72mm width - optimized for thermal printers
-    let content = `<div style="width: 72mm; font-size: 12px; font-family: 'Courier New', monospace; padding: 2mm;">`;
+    // 68mm width - optimized for thermal printers
+    let content = `<div style="width: 68mm; font-size: 12px; font-family: 'Courier New', monospace; padding: 2mm;">`;
     
     // Header
     content += `<div style="text-align: center; margin-bottom: 8px;">`;
