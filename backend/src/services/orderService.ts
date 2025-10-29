@@ -370,10 +370,10 @@ export class OrderService {
     try {
       console.log(`🔍 Querying orders for date: ${date} (Asia/Kolkata timezone)`);
 
-      // Use DATE(created_at) to extract date in session timezone (IST)
+      // Convert created_at from UTC to Asia/Kolkata timezone before extracting date
       const result = await pool.query(
         `SELECT * FROM orders
-         WHERE DATE(created_at) = $1::date
+         WHERE DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata') = $1::date
          ORDER BY created_at DESC`,
         [date]
       );
