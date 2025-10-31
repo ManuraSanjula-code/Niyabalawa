@@ -127,8 +127,8 @@ export const useBilling = () => {
     );
   }, []);
 
-  const savePendingOrder = useCallback(async () => {
-    if (cart.length === 0) return null;
+  const savePendingOrder = useCallback(async (): Promise<{ order: PendingOrder | null; savedToBackend: boolean }> => {
+    if (cart.length === 0) return { order: null, savedToBackend: false };
 
     try {
       const totalAmount = cart.reduce((sum, item) => sum + ((item.price + (item.ricePrice || 0)) * item.quantity), 0);
@@ -154,26 +154,11 @@ export const useBilling = () => {
       setPendingOrders(prev => [...prev, pendingOrder]);
       setTokenNumber(order.tokenNumber);
       clearCart();
-      return pendingOrder;
+      return { order: pendingOrder, savedToBackend: true };
     } catch (error) {
       console.error('Error saving pending order to backend:', error);
-      // Fallback to local save - use simple sequential number
-      const localToken = (Date.now() % 10000).toString(); // Simple number from timestamp
-      const now = new Date();
-      const order: PendingOrder = {
-        items: [...cart],
-        total: cart.reduce((sum, item) => sum + ((item.price + (item.ricePrice || 0)) * item.quantity), 0),
-        tokenNumber: localToken,
-        timestamp: now,
-        createdAt: now,
-        orderType,
-        status: 'pending'
-      };
-
-      setPendingOrders(prev => [...prev, order]);
-      setTokenNumber(localToken);
-      clearCart();
-      return order;
+      // Don't save locally - just fail
+      return { order: null, savedToBackend: false };
     }
   }, [cart, orderType, clearCart]);
 
@@ -195,7 +180,7 @@ export const useBilling = () => {
     setOrderType(order.orderType);
   }, []);
 
-  const updatePendingOrder = useCallback(async (token: string) => {
+  const updatePendingOrder = useCallback(async (token: string): Promise<boolean> => {
     try {
       const totalAmount = cart.reduce((sum, item) => sum + ((item.price + (item.ricePrice || 0)) * item.quantity), 0);
       const orderData = {
@@ -219,36 +204,24 @@ export const useBilling = () => {
       
       // Clear cart and reset token after updating
       clearCart();
+      return true;
     } catch (error) {
       console.error('Error updating order on backend:', error);
-      // Fallback to local update
-      setPendingOrders(prev => 
-        prev.map(order => 
-          order.tokenNumber === token 
-            ? {
-                ...order,
-                items: [...cart],
-                total: cart.reduce((sum, item) => sum + ((item.price + (item.ricePrice || 0)) * item.quantity), 0)
-              }
-            : order
-        )
-      );
-      
-      // Clear cart and reset token after updating
-      clearCart();
+      // Don't update locally - just fail
+      return false;
     }
   }, [cart, clearCart]);
 
-  const completePendingOrder = useCallback(async (token: string) => {
+  const completePendingOrder = useCallback(async (token: string): Promise<boolean> => {
     try {
       await orderApi.completeOrder(token);
       setPendingOrders(prev => prev.filter(order => order.tokenNumber !== token));
       clearCart();
+      return true;
     } catch (error) {
       console.error('Error completing order on backend:', error);
-      // Fallback to local completion
-      setPendingOrders(prev => prev.filter(order => order.tokenNumber !== token));
-      clearCart();
+      // Don't complete locally - just fail
+      return false;
     }
   }, [clearCart]);
 

@@ -157,30 +157,32 @@ function App() {
 
         try {
             setIsPrintingToken(true);
-            const order = await savePendingOrder();
-            if (order) {
+            const result = await savePendingOrder();
+            if (result.order && result.savedToBackend) {
                 // Notify background data system
-                createOrder(order);
+                createOrder(result.order);
 
                 printTokenNumber({
-                    token: order.tokenNumber,
-                    tokenNumber: order.tokenNumber,
-                    orderType: order.orderType,
-                    orderId: order.id,
+                    token: result.order.tokenNumber,
+                    tokenNumber: result.order.tokenNumber,
+                    orderType: result.order.orderType,
+                    orderId: result.order.id,
                     timestamp: new Date().toISOString()
                 });
 
                 printToBackKitchen({
-                    token: order.tokenNumber,
-                    tokenNumber: order.tokenNumber,
-                    items: order.items,
-                    orderType: order.orderType,
+                    token: result.order.tokenNumber,
+                    tokenNumber: result.order.tokenNumber,
+                    items: result.order.items,
+                    orderType: result.order.orderType,
                     timestamp: new Date().toISOString()
                 });
 
-                showNotification(`Token ${order.tokenNumber} printed and saved!`, 'success');
+                showNotification(`Token ${result.order.tokenNumber} printed and saved!`, 'success');
                 setIsEditingPending(false);
                 setCurrentEditingToken(null);
+            } else {
+                showNotification('✗ Failed to save order - API unavailable', 'error');
             }
         } catch (error) {
             console.error('Error printing token:', error);
@@ -196,58 +198,68 @@ function App() {
         try {
             setIsProcessingPayment(true);
             if (isEditingPending && currentEditingToken) {
-                await completePendingOrder(currentEditingToken);
-                // Notify background data system
-                const completedOrder = await orderApi.getOrderByToken(currentEditingToken);
-                completeOrder(completedOrder);
-
-                printBill({
-                    tokenNumber: currentEditingToken,
-                    items: cart,
-                    total,
-                    orderType,
-                    timestamp: new Date().toISOString()
-                });
-
-                showNotification(`Payment completed for Token ${currentEditingToken}!`, 'success');
-                setIsEditingPending(false);
-                setCurrentEditingToken(null);
-            } else {
-                const order = await savePendingOrder();
-                if (order) {
+                const completionSuccess = await completePendingOrder(currentEditingToken);
+                if (completionSuccess) {
                     // Notify background data system
-                    createOrder(order);
-
-                    printTokenNumber({
-                        token: order.tokenNumber,
-                        tokenNumber: order.tokenNumber,
-                        orderType: order.orderType,
-                        orderId: order.id,
-                        timestamp: new Date().toISOString()
-                    });
-
-                    printToBackKitchen({
-                        token: order.tokenNumber,
-                        tokenNumber: order.tokenNumber,
-                        items: order.items,
-                        orderType: order.orderType,
-                        timestamp: new Date().toISOString()
-                    });
-
-                    await completePendingOrder(order.tokenNumber);
-                    // Update background data
-                    const completedOrder = await orderApi.getOrderByToken(order.tokenNumber);
+                    const completedOrder = await orderApi.getOrderByToken(currentEditingToken);
                     completeOrder(completedOrder);
 
                     printBill({
-                        tokenNumber: order.tokenNumber,
+                        tokenNumber: currentEditingToken,
                         items: cart,
                         total,
                         orderType,
                         timestamp: new Date().toISOString()
                     });
 
-                    showNotification(`Payment completed for Token ${order.tokenNumber}!`, 'success');
+                    showNotification(`Payment completed for Token ${currentEditingToken}!`, 'success');
+                    setIsEditingPending(false);
+                    setCurrentEditingToken(null);
+                } else {
+                    showNotification('✗ Failed to complete payment - API unavailable', 'error');
+                }
+            } else {
+                const result = await savePendingOrder();
+                if (result.order && result.savedToBackend) {
+                    // Notify background data system
+                    createOrder(result.order);
+
+                    printTokenNumber({
+                        token: result.order.tokenNumber,
+                        tokenNumber: result.order.tokenNumber,
+                        orderType: result.order.orderType,
+                        orderId: result.order.id,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    printToBackKitchen({
+                        token: result.order.tokenNumber,
+                        tokenNumber: result.order.tokenNumber,
+                        items: result.order.items,
+                        orderType: result.order.orderType,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    const completionSuccess = await completePendingOrder(result.order.tokenNumber);
+                    if (completionSuccess) {
+                        // Update background data
+                        const completedOrder = await orderApi.getOrderByToken(result.order.tokenNumber);
+                        completeOrder(completedOrder);
+
+                        printBill({
+                            tokenNumber: result.order.tokenNumber,
+                            items: cart,
+                            total,
+                            orderType,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        showNotification(`Payment completed for Token ${result.order.tokenNumber}!`, 'success');
+                    } else {
+                        showNotification('✗ Failed to complete payment - API unavailable', 'error');
+                    }
+                } else {
+                    showNotification('✗ Failed to save order - API unavailable', 'error');
                 }
             }
         } catch (error) {
@@ -300,42 +312,62 @@ function App() {
                     )
                 );
 
-                await updatePendingOrder(currentEditingToken);
-                // Notify background data system
-                const updatedOrder = await orderApi.getOrderByToken(currentEditingToken);
-                updateOrder(updatedOrder);
+                // Check if any back kitchen items were added, removed, or modified
+                const backKitchenChanges = [];
 
-                printToBackKitchen({
-                    token: currentEditingToken,
-                    tokenNumber: currentEditingToken,
-                    items: currentCart,
-                    orderType: orderType,
-                    timestamp: new Date().toISOString(),
-                    isEdited: true,
-                    originalItems: originalOrderItems
+                // Check for added back kitchen items
+                const addedBackKitchenItems = addedItems.filter(item => item.kitchen === 'back');
+                backKitchenChanges.push(...addedBackKitchenItems);
+
+                // Check for removed back kitchen items
+                const removedBackKitchenItems = removedItems.filter(item => item.kitchen === 'back');
+                backKitchenChanges.push(...removedBackKitchenItems);
+
+                // Check for modified back kitchen items (quantity or rice type changes)
+                const modifiedBackKitchenItems = currentCart.filter(cartItem => {
+                    if (cartItem.kitchen !== 'back') return false;
+                    const originalItem = originalOrderItems.find(orig => 
+                        orig.id === cartItem.id && 
+                        orig.name === cartItem.name
+                    );
+                    if (!originalItem) return false;
+                    // Check if quantity or rice type changed
+                    return originalItem.quantity !== cartItem.quantity || 
+                           originalItem.riceType !== cartItem.riceType;
                 });
+                backKitchenChanges.push(...modifiedBackKitchenItems);
 
-                printBill({
-                    tokenNumber: currentEditingToken,
-                    items: currentCart,
-                    total,
-                    orderType,
-                    timestamp: new Date().toISOString(),
-                    isEdited: true,
-                    originalItems: originalOrderItems
-                });
+                const hasBackKitchenChanges = backKitchenChanges.length > 0;
 
-                let message = `Order ${currentEditingToken} has been updated!\n\n`;
-                if (removedItems.length > 0) {
-                    message += '🗑️ REMOVED ITEMS:\n';
-                    removedItems.forEach(item => {
-                        message += `  ❌ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
-                    });
-                    message += '\n';
-                }
-                if (addedItems.length > 0) {
-                    message += '✨ ADDED ITEMS:\n';
-                    addedItems.forEach(item => {
+                const updateSuccess = await updatePendingOrder(currentEditingToken);
+                if (updateSuccess) {
+                    const updatedOrder = await orderApi.getOrderByToken(currentEditingToken);
+                    updateOrder(updatedOrder);
+
+                    // Only print kitchen order if there are back kitchen changes
+                    if (hasBackKitchenChanges) {
+                        printToBackKitchen({
+                            token: currentEditingToken,
+                            tokenNumber: currentEditingToken,
+                            items: currentCart,
+                            orderType: orderType,
+                            timestamp: new Date().toISOString(),
+                            isEdited: true,
+                            originalItems: originalOrderItems
+                        });
+                    }
+
+                    let message = `Order ${currentEditingToken} has been updated!\n\n`;
+                    if (removedItems.length > 0) {
+                        message += '🗑️ REMOVED ITEMS:\n';
+                        removedItems.forEach(item => {
+                            message += `  ❌ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
+                        });
+                        message += '\n';
+                    }
+                    if (addedItems.length > 0) {
+                        message += '✨ ADDED ITEMS:\n';
+                        addedItems.forEach(item => {
                         message += `  ✓ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
                     });
                     message += '\n';
@@ -343,14 +375,18 @@ function App() {
                 if (removedItems.length === 0 && addedItems.length === 0) {
                     message += 'No items were added or removed.\nQuantities or details may have changed.\n\n';
                 }
-                message += '📄 Printing:\n';
-                message += '  ✓ Updated Kitchen Order\n';
-                message += '  ✓ Updated Bill with Edit History';
+                
+                // Add printing status to message
+                if (hasBackKitchenChanges) {
+                    message += '🖨️ Printed updated kitchen order for back kitchen changes.\n\n';
+                } else {
+                    message += 'No back kitchen changes detected - no printing needed.\n\n';
+                }
 
-                alert(message);
-                setIsEditingPending(false);
-                setCurrentEditingToken(null);
-                setOriginalOrderItems([]);
+                    showNotification(message.trim(), 'success');
+                } else {
+                    showNotification('⚠️ Order updated locally but not printed (API unavailable)', 'error');
+                }
             }
         } catch (error) {
             console.error('Error updating order:', error);

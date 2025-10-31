@@ -86,17 +86,25 @@ export const getPrinterSettings = (): PrinterSettings => {
  */
 export const getPrinter = (type: 'backKitchen' | 'bill' | 'tokenNumber'): string => {
     const settings = getPrinterSettings();
+    console.log(`🔧 Printer settings for ${type}:`, settings);
     
+    let selectedPrinter: string;
     switch (type) {
         case 'backKitchen':
-            return settings.backKitchenPrinter || 'Default Printer';
+            selectedPrinter = settings.backKitchenPrinter || 'Default Printer';
+            break;
         case 'bill':
-            return settings.billPrinter || 'Default Printer';
+            selectedPrinter = settings.billPrinter || 'Default Printer';
+            break;
         case 'tokenNumber':
-            return settings.tokenNumberPrinter || 'Default Printer';
+            selectedPrinter = settings.tokenNumberPrinter || 'Default Printer';
+            break;
         default:
-            return 'Default Printer';
+            selectedPrinter = 'Default Printer';
     }
+    
+    console.log(`🎯 Selected ${type} printer: "${selectedPrinter}"`);
+    return selectedPrinter;
 };
 
 /**
@@ -187,12 +195,11 @@ const formatKitchenOrder = (orderData: unknown): string => {
                     
                     content += `<div style="margin: 4px 0; padding: 4px; text-decoration: line-through;">`;
                     content += `<div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px;">`;
-                    content += `<span>${itemObj.name || 'Unknown Item'}</span>`;
+                    content += `<span>${itemObj.name || 'Unknown Item'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
                     content += `<span>x${quantity}</span>`;
                     content += `</div>`;
                     if (itemObj.riceType) {
                         content += `<div style="font-size: 11px; margin-top: 2px; padding-left: 4px;">`;
-                        content += `→ Rice: <strong>${itemObj.riceType}</strong>`;
                         content += `</div>`;
                     }
                     content += `</div>`;
@@ -246,14 +253,13 @@ const formatKitchenOrder = (orderData: unknown): string => {
                 content += `<div style="font-size: 10px; font-weight: bold;">✓ NEW ITEM</div>`;
             }
             content += `<div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px;">`;
-            content += `<span>${itemObj.name || 'Unknown Item'}</span>`;
+            content += `<span>${itemObj.name || 'Unknown Item'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
             content += `<span>x${quantity}</span>`;
             content += `</div>`;
             
             // Rice type if available
             if (itemObj.riceType) {
                 content += `<div style="font-size: 11px; margin-top: 2px; padding-left: 4px;">`;
-                content += `→ Rice: <strong>${itemObj.riceType}</strong>`;
                 content += `</div>`;
             }
             
@@ -365,7 +371,7 @@ const formatBill = (billData: unknown): string => {
                 content += `<div style="font-size: 8px; font-weight: bold; color: #00aa00;">✓ NEW ITEM</div>`;
             }
             content += `<div style="display: flex; justify-content: space-between;">`;
-            content += `<span style="font-weight: bold;">${itemObj.name || 'Unknown'}</span>`;
+            content += `<span style="font-weight: bold;">${itemObj.name || 'Unknown'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
             content += `<span>x${quantity}</span>`;
             content += `</div>`;
             
@@ -551,12 +557,50 @@ export const printBill = async (billData: unknown): Promise<boolean> => {
  * Print token number using Electron API
  */
 export const printTokenNumber = async (tokenData: unknown): Promise<boolean> => {
-    const printer = getPrinter('tokenNumber');
-    console.log(`Printing Token to: ${printer}`, tokenData);
+    let printer = getPrinter('tokenNumber');
+    console.log(`🔍 Token Printer Settings:`, getPrinterSettings());
+    console.log(`🖨️ Attempting to print token to: "${printer}"`, tokenData);
+    
+    // Check if the selected printer is available
+    try {
+        const availablePrinters = await getAvailablePrinters();
+        const printerExists = availablePrinters.some(p => p.name === printer || p.displayName === printer);
+        console.log(`📋 Available printers:`, availablePrinters.map(p => ({ name: p.name, displayName: p.displayName })));
+        console.log(`🔍 Selected printer "${printer}" ${printerExists ? 'FOUND' : 'NOT FOUND'} in available printers`);
+        
+        if (!printerExists && printer !== 'Default Printer') {
+            console.warn(`⚠️ Selected token printer "${printer}" not found in available printers. Trying fallback options.`);
+            
+            // Try to get the default printer
+            try {
+                const defaultPrinter = await getDefaultPrinter();
+                if (defaultPrinter) {
+                    console.log(`🔄 Using system default printer instead: "${defaultPrinter.name}"`);
+                    printer = defaultPrinter.name;
+                } else if (availablePrinters.length > 0) {
+                    console.log(`🔄 Using first available printer instead: "${availablePrinters[0].name}"`);
+                    printer = availablePrinters[0].name;
+                } else {
+                    console.error('❌ No printers available at all!');
+                }
+            } catch (defaultError) {
+                console.error('❌ Error getting default printer:', defaultError);
+                if (availablePrinters.length > 0) {
+                    console.log(`🔄 Using first available printer as last resort: "${availablePrinters[0].name}"`);
+                    printer = availablePrinters[0].name;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error checking available printers:', error);
+    }
     
     if (window.electronAPI) {
         try {
             const content = formatToken(tokenData);
+            console.log(`📄 Generated token content length: ${content.length} characters`);
+            console.log(`📄 Token content preview:`, content.substring(0, 200) + '...');
+            
             const result = await window.electronAPI.printToPrinter({
                 printerName: printer,
                 content,
@@ -564,18 +608,20 @@ export const printTokenNumber = async (tokenData: unknown): Promise<boolean> => 
             });
             
             if (result.success) {
-                console.log('Token printed successfully');
+                console.log('✅ Token printed successfully');
                 return true;
             } else {
-                console.error('Failed to print token:', result.message);
+                console.error('❌ Failed to print token:', result.message);
+                console.error('❌ Full result object:', result);
                 return false;
             }
         } catch (error) {
-            console.error('Error printing token:', error);
+            console.error('💥 Error printing token:', error);
+            console.error('💥 Error details:', error);
             return false;
         }
     } else {
-        console.warn('Electron API not available, printing to console');
+        console.warn('⚠️ Electron API not available, printing to console');
         return false;
     }
 };
