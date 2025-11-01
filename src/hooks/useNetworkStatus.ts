@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 
 export const useNetworkStatus = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  // Start with false (offline) until we verify connection - don't trust navigator.onLine
+  const [isOnline, setIsOnline] = useState(false);
   const [showReconnected, setShowReconnected] = useState(false);
   const [isSlow, setIsSlow] = useState(false);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCheckingRef = useRef<boolean>(false);
+  const lastKnownStateRef = useRef<{ online: boolean; slow: boolean }>({ online: false, slow: false });
+  const verificationPromiseRef = useRef<Promise<{ online: boolean; slow: boolean; responseTime: number }> | null>(null);
+  const hasBeenVerifiedRef = useRef<boolean>(false); // Track if we've completed at least one verification
 
   // Thresholds for connection quality
   // 4 seconds threshold: If a simple request takes >4s, connection is too slow for functional use
@@ -18,14 +22,15 @@ export const useNetworkStatus = () => {
     // Verify actual internet connectivity and measure speed
     // Tests against reliable endpoints to detect truly slow connections
     const verifyConnectivity = async (): Promise<{ online: boolean; slow: boolean; responseTime: number }> => {
-      // Prevent multiple simultaneous checks
-      if (isCheckingRef.current) {
-        // Return current state values - these will be retrieved from state when needed
-        return { online: navigator.onLine, slow: false, responseTime: 0 };
+      // If a check is already in progress, wait for it instead of starting a new one
+      if (isCheckingRef.current && verificationPromiseRef.current) {
+        return verificationPromiseRef.current;
       }
       
-      isCheckingRef.current = true;
-      const startTime = Date.now();
+      // Create new verification promise
+      const verificationPromise = (async (): Promise<{ online: boolean; slow: boolean; responseTime: number }> => {
+        isCheckingRef.current = true;
+        const startTime = Date.now();
 
       try {
         const controller = new AbortController();
@@ -94,6 +99,7 @@ export const useNetworkStatus = () => {
 
         clearTimeout(timeoutId);
         isCheckingRef.current = false;
+        verificationPromiseRef.current = null;
 
         if (!success) {
           // All URLs failed
@@ -116,6 +122,7 @@ export const useNetworkStatus = () => {
       } catch (error) {
         const responseTime = Date.now() - startTime;
         isCheckingRef.current = false;
+        verificationPromiseRef.current = null;
         
         // If timeout or error, connection is offline or too slow (exceeded timeout)
         if (responseTime >= TIMEOUT_THRESHOLD || (error instanceof Error && error.name === 'AbortError')) {
@@ -125,96 +132,171 @@ export const useNetworkStatus = () => {
         }
         return { online: false, slow: false, responseTime };
       }
+      })();
+
+      verificationPromiseRef.current = verificationPromise;
+      return verificationPromise;
     };
 
     // Handler for when browser detects offline
+    // This is safe to trust - if browser says offline, we should freeze IMMEDIATELY
     const handleOffline = () => {
-      console.log('🔴 Browser detected: Internet connection lost');
+      console.log('🔴 Browser detected: Internet connection lost - FREEZING IMMEDIATELY');
+      lastKnownStateRef.current = { online: false, slow: false };
       setIsOnline(false);
       setIsSlow(false);
-      setShowReconnected(false);
+      setShowReconnected(false); // Always hide reconnected message when going offline
       
+      // Clear reconnect timer
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+      
+      // Verify in background (don't wait) to confirm offline status
+      verifyConnectivity().then(result => {
+        console.log('🔴 Verification after offline event confirms:', result.online ? 'online' : 'offline');
+        if (!result.online) {
+          // Confirmed offline - state is already correct
+          lastKnownStateRef.current = { online: false, slow: false };
+          setIsOnline(false);
+          setIsSlow(false);
+        }
+        // If verification says online, periodic check will catch it
+      });
     };
 
     // Handler for when browser detects online
+    // CRITICAL: Don't trust browser - verify before unfreezing
     const handleOnline = async () => {
-      console.log('🟡 Browser detected: Connection restored, verifying speed...');
+      console.log('🟡 Browser detected: Connection restored, verifying BEFORE unfreezing...');
+      
+      // DO NOT update state yet - keep overlay frozen until verification succeeds
+      // The overlay will remain visible because isOnline is still false
       
       const result = await verifyConnectivity();
       
+      // Get previous state BEFORE updating (only meaningful if we've been verified before)
+      const wasOfflineOrSlow = hasBeenVerifiedRef.current && (!lastKnownStateRef.current.online || lastKnownStateRef.current.slow);
+      
+      // Only update state after verification completes
       if (result.online) {
+        hasBeenVerifiedRef.current = true;
+        
         if (result.slow) {
-          console.log('🟡 Verified: Connection restored but SLOW');
-          setIsOnline(true);
+          console.log('🟡 Verified: Connection restored but SLOW - keeping overlay frozen');
+          lastKnownStateRef.current = { online: true, slow: true };
+          setIsOnline(true); // Still online, but slow
           setIsSlow(true);
-          setShowReconnected(false); // Don't show success for slow connection
+          setShowReconnected(false); // Never show success for slow connection
         } else {
-          console.log('🟢 Verified: Connection restored and FAST');
+          console.log('🟢 Verified: Connection restored and FAST - unfreezing now');
+          lastKnownStateRef.current = { online: true, slow: false };
           setIsOnline(true);
           setIsSlow(false);
-          setShowReconnected(true);
           
-          if (reconnectTimerRef.current) {
-            clearTimeout(reconnectTimerRef.current);
+          // Only show reconnected message if:
+          // 1. We've been verified before (not initial load)
+          // 2. We were ACTUALLY offline/slow before
+          // This prevents false positives on initial load
+          if (wasOfflineOrSlow) {
+            setShowReconnected(true);
+            
+            // Clear any existing timer
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+            }
+            
+            // Auto-hide after 3 seconds
+            reconnectTimerRef.current = setTimeout(() => {
+              setShowReconnected(false);
+              reconnectTimerRef.current = null;
+            }, 3000);
           }
-          
-          reconnectTimerRef.current = setTimeout(() => {
-            setShowReconnected(false);
-            reconnectTimerRef.current = null;
-          }, 3000);
         }
       } else {
-        console.log('🔴 Verification failed: Still offline');
+        hasBeenVerifiedRef.current = true;
+        console.log('🔴 Verification failed: Still offline - keeping overlay frozen');
+        lastKnownStateRef.current = { online: false, slow: false };
         setIsOnline(false);
         setIsSlow(false);
+        setShowReconnected(false);
       }
     };
 
     // Continuous connectivity check
+    // This runs every 3 seconds to continuously monitor connection
     const checkConnectivity = async () => {
-      const result = await verifyConnectivity();
-      
-      // Always update states based on connectivity check result
-      if (result.online) {
-        if (result.slow) {
-          console.log(`🟡 Periodic check: Connection SLOW (${result.responseTime}ms)`);
-          setIsOnline(true);
-          setIsSlow(true);
-          setShowReconnected(false);
-        } else {
-          // Check if we need to show reconnected toast (transition from offline/slow to fast)
-          setIsOnline((prevOnline) => {
-            setIsSlow((prevSlow) => {
-              const wasSlowOrOffline = !prevOnline || prevSlow;
-              
-              if (wasSlowOrOffline) {
-                console.log(`🟢 Periodic check: Connection restored and FAST (${result.responseTime}ms)`);
-                setShowReconnected(true);
-                
-                if (reconnectTimerRef.current) {
-                  clearTimeout(reconnectTimerRef.current);
-                }
-                
-                reconnectTimerRef.current = setTimeout(() => {
-                  setShowReconnected(false);
-                  reconnectTimerRef.current = null;
-                }, 3000);
-              }
-              
-              return false; // Set slow to false
-            });
-            return true; // Set online to true
-          });
+      // Skip if browser says offline - trust that immediately
+      if (!navigator.onLine) {
+        const wasOnline = lastKnownStateRef.current.online && !lastKnownStateRef.current.slow;
+        if (wasOnline) {
+          console.log('🔴 Periodic check: Browser reports offline - freezing overlay');
         }
-      } else {
-        console.log(`🔴 Periodic check: Connection lost (${result.responseTime}ms)`);
+        lastKnownStateRef.current = { online: false, slow: false };
         setIsOnline(false);
         setIsSlow(false);
         setShowReconnected(false);
+        
+        // Clear reconnect timer
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        return;
+      }
+      
+      const result = await verifyConnectivity();
+      
+      // Get previous state BEFORE updating (only meaningful if we've been verified before)
+      const prevState = lastKnownStateRef.current;
+      const wasOfflineOrSlow = hasBeenVerifiedRef.current && (!prevState.online || prevState.slow);
+      
+      // Update states based on verified connectivity check result
+      if (result.online) {
+        hasBeenVerifiedRef.current = true;
+        
+        if (result.slow) {
+          console.log(`🟡 Periodic check: Connection SLOW (${result.responseTime}ms) - keeping overlay frozen`);
+          lastKnownStateRef.current = { online: true, slow: true };
+          setIsOnline(true);
+          setIsSlow(true);
+          // Never show reconnected message for slow connection
+          setShowReconnected(false);
+        } else {
+          // Connection is good and fast
+          lastKnownStateRef.current = { online: true, slow: false };
+          setIsOnline(true);
+          setIsSlow(false);
+          
+          // Only show reconnected message if:
+          // 1. We've been verified before (not initial load)
+          // 2. We were ACTUALLY offline/slow before (not just initial state)
+          // 3. We don't already have a timer running (to prevent resetting)
+          // This prevents false positives
+          if (wasOfflineOrSlow && !reconnectTimerRef.current) {
+            console.log(`🟢 Periodic check: Connection restored and FAST (${result.responseTime}ms) - was offline/slow`);
+            setShowReconnected(true);
+            
+            reconnectTimerRef.current = setTimeout(() => {
+              setShowReconnected(false);
+              reconnectTimerRef.current = null;
+            }, 3000);
+          }
+        }
+      } else {
+        hasBeenVerifiedRef.current = true;
+        console.log(`🔴 Periodic check: Connection lost (${result.responseTime}ms) - freezing overlay`);
+        lastKnownStateRef.current = { online: false, slow: false };
+        setIsOnline(false);
+        setIsSlow(false);
+        setShowReconnected(false);
+        
+        // Clear reconnect timer if connection is lost
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
       }
     };
 
@@ -225,7 +307,8 @@ export const useNetworkStatus = () => {
     // Check connectivity every 3 seconds
     checkIntervalRef.current = setInterval(checkConnectivity, 3000);
 
-    // Initial check
+    // Initial check - this will verify and set initial state
+    // Don't trust navigator.onLine, verify first before setting isOnline to true
     checkConnectivity();
 
     // Cleanup

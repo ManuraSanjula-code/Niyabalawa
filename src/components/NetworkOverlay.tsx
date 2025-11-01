@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 interface NetworkOverlayProps {
   isOnline: boolean;
@@ -8,19 +8,37 @@ interface NetworkOverlayProps {
 
 const NetworkOverlay: React.FC<NetworkOverlayProps> = ({ isOnline, showReconnected, isSlow = false }) => {
   const [showToast, setShowToast] = useState(false);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-hide toast after 3 seconds
+  // Auto-hide toast after 3 seconds when showReconnected becomes true
   useEffect(() => {
-    if (showReconnected) {
-      setShowToast(true);
-      const timer = setTimeout(() => {
-        setShowToast(false);
-      }, 3000);
+    // Clear any existing timer
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
 
-      return () => clearTimeout(timer);
+    if (showReconnected) {
+      // Show the toast immediately
+      setShowToast(true);
+      
+      // Auto-hide after 3 seconds
+      toastTimerRef.current = setTimeout(() => {
+        setShowToast(false);
+        toastTimerRef.current = null;
+      }, 3000);
     } else {
+      // Hide immediately if showReconnected becomes false
       setShowToast(false);
     }
+
+    // Cleanup on unmount or when showReconnected changes
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
   }, [showReconnected]);
 
   // Show overlay if offline OR if connection is too slow
