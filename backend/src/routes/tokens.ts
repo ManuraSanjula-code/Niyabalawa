@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { tokenService } from '../services/tokenService';
+import { DatabaseErrorHandler } from '../database/errorHandler';
 
 const router = Router();
 
@@ -12,8 +13,8 @@ router.get('/current', async (req: Request, res: Response) => {
     const count = await tokenService.getCurrentTokenCount();
     res.json({ count });
   } catch (error) {
-    console.error('Error getting token count:', error);
-    res.status(500).json({ error: 'Failed to get token count' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get token count');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -27,8 +28,8 @@ router.get('/history', async (req: Request, res: Response) => {
     const history = await tokenService.getTokenHistory(date);
     res.json(history);
   } catch (error) {
-    console.error('Error getting token history:', error);
-    res.status(500).json({ error: 'Failed to get token history' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get token history');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -44,12 +45,15 @@ router.post('/reset', async (req: Request, res: Response) => {
       message: 'Token counter reset successfully',
       success: true 
     });
+    res.status(200).json({ 
+      message: 'Token counter reset successfully',
+      success: true 
+    });
   } catch (error) {
-    console.error('❌ Error in reset token endpoint:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to reset token counter';
-    res.status(500).json({ 
-      error: errorMessage,
-      success: false 
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'reset token counter');
+    res.status(errorResponse.status).json({
+      ...errorResponse.response,
+      success: false
     });
   }
 });

@@ -22,6 +22,9 @@ interface CartProps {
     isPrintingToken?: boolean;
     isProcessingPayment?: boolean;
     isUpdatingOrder?: boolean;
+    // Pager number props
+    pagerNumber?: number;
+    onPagerNumberChange?: (pagerNumber: number) => void;
 }
 
 const Cart: React.FC<CartProps> = ({
@@ -43,7 +46,10 @@ const Cart: React.FC<CartProps> = ({
                                        // New loading props
                                        isPrintingToken = false,
                                        isProcessingPayment = false,
-                                       isUpdatingOrder = false
+                                       isUpdatingOrder = false,
+                                       // Pager number props
+                                       pagerNumber,
+                                       onPagerNumberChange
                                    }) => {
     const handleRemoveItem = (itemId: string, itemName: string) => {
         if (isEditingPending) {
@@ -127,6 +133,28 @@ const Cart: React.FC<CartProps> = ({
                         >
                             📦 Take Away
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Pager Number Selection - Only for Dine-in */}
+            {orderType === 'dine-in' && onPagerNumberChange && (
+                <div className="px-2 pt-2 flex-shrink-0">
+                    <div className="flex flex-col gap-2">
+                        <label className="text-xs font-semibold text-gray-700">Pager Machine Number</label>
+                        <select
+                            value={pagerNumber || ''}
+                            onChange={(e) => onPagerNumberChange(parseInt(e.target.value) || 1)}
+                            className="w-full py-2 px-3 rounded-lg border border-gray-300 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            disabled={isAnyActionInProgress}
+                        >
+                            <option value="">Select Pager Number</option>
+                            {Array.from({ length: 30 }, (_, i) => i + 1).map((num) => (
+                                <option key={num} value={num}>
+                                    Pager #{num}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
             )}

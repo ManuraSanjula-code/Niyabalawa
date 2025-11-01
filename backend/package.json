@@ -11,6 +11,7 @@
     "db:seed": "ts-node src/database/seed.ts",
     "db:migrate:edit-tracking": "ts-node src/database/migrateEditTracking.ts",
     "db:migrate:token-length": "ts-node src/database/migrateTokenLength.ts",
+    "db:migrate:pager-number": "ts-node src/database/migratePagerNumber.ts",
     "reset:tokens": "ts-node src/resetTokens.ts"
   },
   "keywords": [

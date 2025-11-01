@@ -210,7 +210,7 @@ export class TokenService {
             return result.rows[0]?.current_count || 0;
         } catch (error) {
             console.error('❌ Error getting token count:', error);
-            return 0;
+            throw error; // Re-throw to allow route-level error handling
         }
     }
 
@@ -232,7 +232,7 @@ export class TokenService {
             return result.rows as Array<{ token_number: string; frontend_id: string; generated_at: string }>;
         } catch (error) {
             console.error('❌ Error getting token history:', error);
-            return [];
+            throw error; // Re-throw to allow route-level error handling
         }
     }
 

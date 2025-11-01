@@ -33,6 +33,7 @@ export interface Order {
   frontendId?: string;
   originalItems?: CartItem[]; // Store original items before edit
   isEdited?: boolean; // Flag to indicate if order was edited
+  pagerNumber?: number; // Pager number for dine-in orders (1-30)
 }
 
 export interface PendingOrder extends Order {

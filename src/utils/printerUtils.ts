@@ -198,10 +198,6 @@ const formatKitchenOrder = (orderData: unknown): string => {
                     content += `<span>${itemObj.name || 'Unknown Item'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
                     content += `<span>x${quantity}</span>`;
                     content += `</div>`;
-                    if (itemObj.riceType) {
-                        content += `<div style="font-size: 11px; margin-top: 2px; padding-left: 4px;">`;
-                        content += `</div>`;
-                    }
                     content += `</div>`;
                 });
                 content += `</div>`;
@@ -256,12 +252,6 @@ const formatKitchenOrder = (orderData: unknown): string => {
             content += `<span>${itemObj.name || 'Unknown Item'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
             content += `<span>x${quantity}</span>`;
             content += `</div>`;
-            
-            // Rice type if available
-            if (itemObj.riceType) {
-                content += `<div style="font-size: 11px; margin-top: 2px; padding-left: 4px;">`;
-                content += `</div>`;
-            }
             
             // Special notes if available
             if (itemObj.notes) {
@@ -374,11 +364,6 @@ const formatBill = (billData: unknown): string => {
             content += `<span style="font-weight: bold;">${itemObj.name || 'Unknown'}${itemObj.portion && typeof itemObj.portion === 'string' ? ` (${itemObj.portion.toUpperCase()})` : ''}</span>`;
             content += `<span>x${quantity}</span>`;
             content += `</div>`;
-            
-            // Rice type on new line if available
-            if (itemObj.riceType) {
-                content += `<div style="font-size: 9px; color: #666; padding-left: 4px;">Rice: ${itemObj.riceType}</div>`;
-            }
             
             // Price and total
             content += `<div style="display: flex; justify-content: space-between; font-size: 10px; padding-left: 8px;">`;

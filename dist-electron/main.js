@@ -1,193 +1,284 @@
-import { app as p, Menu as b, BrowserWindow as f, ipcMain as m } from "electron";
-import d from "path";
-import { fileURLToPath as x } from "url";
-import { spawn as k } from "child_process";
-import { existsSync as h } from "fs";
-const R = x(import.meta.url), w = d.dirname(R);
-let s = null, i = null;
-const P = p.requestSingleInstanceLock();
-P ? p.on("second-instance", () => {
-  s && (s.isMinimized() && s.restore(), s.focus());
-}) : (console.log("⚠️  Another instance is already running. Quitting..."), p.quit());
-const D = () => new Promise((o, n) => {
-  console.log("🚀 Starting backend server...");
-  const e = process.env.VITE_DEV_SERVER_URL !== void 0;
-  let t, a, l, g = "";
-  if (e)
-    t = d.join(w, "..", "backend"), a = process.platform === "win32" ? "npm.cmd" : "npm", l = ["run", "dev"], console.log("📂 Development mode");
-  else {
-    t = d.join(process.resourcesPath, "backend"), g = d.join(t, "dist", "server.js");
-    const r = d.dirname(process.execPath);
-    a = d.join(r, "node.exe"), h(a) || (a = "node"), l = [g], console.log("📂 Production mode"), console.log(`📂 Resources path: ${process.resourcesPath}`);
-  }
-  if (console.log(`📂 Backend path: ${t}`), console.log(`🔧 Command: ${a} ${l.join(" ")}`), console.log(`🔧 CWD: ${t}`), !h(t)) {
-    const r = new Error(`Backend path does not exist: ${t}`);
-    console.error("❌", r.message), n(r);
-    return;
-  }
-  if (!e && g && !h(g)) {
-    const r = new Error(`Backend server file not found: ${g}`);
-    console.error("❌", r.message), n(r);
-    return;
-  }
-  i = k(a, l, {
-    cwd: t,
-    env: {
-      ...process.env,
-      NODE_ENV: e ? "development" : "production",
-      PORT: "3001",
-      FRONTEND_URL: "http://localhost:5173"
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    shell: !1
+import { app, Menu, BrowserWindow, ipcMain } from "electron";
+import path from "path";
+import { fileURLToPath } from "url";
+import { spawn } from "child_process";
+import { existsSync } from "fs";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+let mainWindow = null;
+let backendProcess = null;
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log("⚠️  Another instance is already running. Quitting...");
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
-  let u = !1;
-  i.stdout && i.stdout.on("data", (r) => {
-    const c = r.toString().trim();
-    console.log(`[Backend] ${c}`), (c.includes("Running") || c.includes("listening") || c.includes("PORT")) && (u = !0);
-  }), i.stderr && i.stderr.on("data", (r) => {
-    const c = r.toString().trim();
-    console.error(`[Backend Error] ${c}`), c.toLowerCase().includes("warn") || console.error("Backend encountered an error during startup");
-  }), i.on("error", (r) => {
-    console.error("❌ Failed to start backend:", r), console.error("Error details:", {
-      message: r.message,
-      code: r.code,
-      path: r.path
-    }), n(r);
-  }), i.on("exit", (r, c) => {
-    console.log(`⚠️  Backend process exited with code ${r} and signal ${c}`), r !== 0 && r !== null && console.error("Backend exited with non-zero code"), i = null;
+}
+const startBackendServer = () => {
+  return new Promise((resolve, reject) => {
+    console.log("🚀 Starting backend server...");
+    const isDev = process.env.VITE_DEV_SERVER_URL !== void 0;
+    let backendPath;
+    let nodeCommand;
+    let args;
+    let serverPath = "";
+    if (isDev) {
+      backendPath = path.join(__dirname, "..", "backend");
+      nodeCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+      args = ["run", "dev"];
+      console.log(`📂 Development mode`);
+    } else {
+      backendPath = path.join(process.resourcesPath, "backend");
+      serverPath = path.join(backendPath, "dist", "server.js");
+      const electronDir = path.dirname(process.execPath);
+      nodeCommand = path.join(electronDir, "node.exe");
+      if (!existsSync(nodeCommand)) {
+        nodeCommand = "node";
+      }
+      args = [serverPath];
+      console.log(`📂 Production mode`);
+      console.log(`📂 Resources path: ${process.resourcesPath}`);
+    }
+    console.log(`📂 Backend path: ${backendPath}`);
+    console.log(`🔧 Command: ${nodeCommand} ${args.join(" ")}`);
+    console.log(`🔧 CWD: ${backendPath}`);
+    if (!existsSync(backendPath)) {
+      const error = new Error(`Backend path does not exist: ${backendPath}`);
+      console.error("❌", error.message);
+      reject(error);
+      return;
+    }
+    if (!isDev && serverPath && !existsSync(serverPath)) {
+      const error = new Error(`Backend server file not found: ${serverPath}`);
+      console.error("❌", error.message);
+      reject(error);
+      return;
+    }
+    backendProcess = spawn(nodeCommand, args, {
+      cwd: backendPath,
+      env: {
+        ...process.env,
+        NODE_ENV: isDev ? "development" : "production",
+        PORT: "3001",
+        FRONTEND_URL: isDev ? "http://localhost:5173" : "http://localhost:5173"
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false
+    });
+    let backendStarted = false;
+    if (backendProcess.stdout) {
+      backendProcess.stdout.on("data", (data) => {
+        const output = data.toString().trim();
+        console.log(`[Backend] ${output}`);
+        if (output.includes("Running") || output.includes("listening") || output.includes("PORT")) {
+          backendStarted = true;
+        }
+      });
+    }
+    if (backendProcess.stderr) {
+      backendProcess.stderr.on("data", (data) => {
+        const error = data.toString().trim();
+        console.error(`[Backend Error] ${error}`);
+        if (!error.toLowerCase().includes("warn")) {
+          console.error("Backend encountered an error during startup");
+        }
+      });
+    }
+    backendProcess.on("error", (error) => {
+      console.error("❌ Failed to start backend:", error);
+      console.error("Error details:", {
+        message: error.message,
+        code: error.code,
+        path: error.path
+      });
+      reject(error);
+    });
+    backendProcess.on("exit", (code, signal) => {
+      console.log(`⚠️  Backend process exited with code ${code} and signal ${signal}`);
+      if (code !== 0 && code !== null) {
+        console.error("Backend exited with non-zero code");
+      }
+      backendProcess = null;
+    });
+    const checkInterval = setInterval(() => {
+      if (backendStarted) {
+        clearInterval(checkInterval);
+        console.log("✅ Backend server confirmed running");
+        resolve();
+      }
+    }, 500);
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      if (!backendStarted) {
+        console.log("⚠️  Backend startup timeout - assuming it started");
+      }
+      resolve();
+    }, 1e4);
   });
-  const v = setInterval(() => {
-    u && (clearInterval(v), console.log("✅ Backend server confirmed running"), o());
-  }, 500);
-  setTimeout(() => {
-    clearInterval(v), u || console.log("⚠️  Backend startup timeout - assuming it started"), o();
-  }, 1e4);
-}), y = () => {
-  i && (console.log("🛑 Stopping backend server..."), i.kill(), i = null);
-}, E = () => {
-  const o = d.join(w, "preload.js");
-  if (console.log("🔧 Creating window with preload:", o), s = new f({
+};
+const stopBackendServer = () => {
+  if (backendProcess) {
+    console.log("🛑 Stopping backend server...");
+    backendProcess.kill();
+    backendProcess = null;
+  }
+};
+const createWindow = () => {
+  const preloadPath = path.join(__dirname, "preload.js");
+  console.log("🔧 Creating window with preload:", preloadPath);
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: o,
-      contextIsolation: !0,
-      nodeIntegration: !1
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false
     }
-  }), process.env.VITE_DEV_SERVER_URL)
-    console.log("📡 Loading dev server:", process.env.VITE_DEV_SERVER_URL), s.loadURL(process.env.VITE_DEV_SERVER_URL), s.webContents.openDevTools();
-  else {
-    const n = d.join(w, "../dist/index.html");
-    console.log("📄 Loading file:", n), s.loadFile(n);
+  });
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log("📡 Loading dev server:", process.env.VITE_DEV_SERVER_URL);
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.webContents.openDevTools();
+  } else {
+    const indexPath = path.join(__dirname, "../dist/index.html");
+    console.log("📄 Loading file:", indexPath);
+    mainWindow.loadFile(indexPath);
   }
-  s.on("closed", () => {
-    s = null;
+  mainWindow.on("closed", () => {
+    mainWindow = null;
   });
 };
-p.whenReady().then(async () => {
-  console.log("🎬 Electron app is ready"), b.setApplicationMenu(null);
+app.whenReady().then(async () => {
+  console.log("🎬 Electron app is ready");
+  Menu.setApplicationMenu(null);
   try {
-    await D();
-  } catch (o) {
-    console.error("Failed to start backend server:", o);
+    await startBackendServer();
+  } catch (error) {
+    console.error("Failed to start backend server:", error);
   }
-  E(), p.on("activate", () => {
-    f.getAllWindows().length === 0 && E();
+  createWindow();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
-p.on("window-all-closed", () => {
-  y(), process.platform !== "darwin" && p.quit();
-});
-p.on("before-quit", () => {
-  y();
-});
-m.handle("get-printers", async () => {
-  try {
-    const o = s == null ? void 0 : s.webContents;
-    if (!o)
-      throw console.error("❌ No active window found"), new Error("No active window");
-    console.log("🔍 Attempting to get printers...");
-    let n;
-    try {
-      n = await o.getPrintersAsync();
-    } catch {
-      console.log("getPrintersAsync not available, trying getPrinters..."), n = o.getPrinters();
-    }
-    console.log("✅ Found printers:", n.length), n.forEach((t, a) => {
-      console.log(`   ${a + 1}. ${t.displayName || t.name} ${t.isDefault ? "(Default)" : ""}`);
-    });
-    const e = n.map((t) => ({
-      name: t.name,
-      displayName: t.displayName || t.name,
-      description: t.description || "",
-      status: t.status || 0,
-      isDefault: t.isDefault || !1,
-      options: t.options || {}
-    }));
-    return console.log("📤 Returning", e.length, "printers to renderer"), e;
-  } catch (o) {
-    return console.error("❌ Error getting printers:", o), [];
+app.on("window-all-closed", () => {
+  stopBackendServer();
+  if (process.platform !== "darwin") {
+    app.quit();
   }
 });
-m.handle("print-to-printer", async (o, n) => {
+app.on("before-quit", () => {
+  stopBackendServer();
+});
+ipcMain.handle("get-printers", async () => {
   try {
-    const { printerName: e, content: t, type: a } = n;
-    if (!s)
+    const contents = mainWindow == null ? void 0 : mainWindow.webContents;
+    if (!contents) {
+      console.error("❌ No active window found");
       throw new Error("No active window");
-    const l = new f({
-      show: !1,
+    }
+    console.log("🔍 Attempting to get printers...");
+    let printers;
+    try {
+      printers = await contents.getPrintersAsync();
+    } catch {
+      console.log("getPrintersAsync not available, trying getPrinters...");
+      printers = contents.getPrinters();
+    }
+    console.log("✅ Found printers:", printers.length);
+    printers.forEach((p, index) => {
+      console.log(`   ${index + 1}. ${p.displayName || p.name} ${p.isDefault ? "(Default)" : ""}`);
+    });
+    const result = printers.map((printer) => ({
+      name: printer.name,
+      displayName: printer.displayName || printer.name,
+      description: printer.description || "",
+      status: printer.status || 0,
+      isDefault: printer.isDefault || false,
+      options: printer.options || {}
+    }));
+    console.log("📤 Returning", result.length, "printers to renderer");
+    return result;
+  } catch (error) {
+    console.error("❌ Error getting printers:", error);
+    return [];
+  }
+});
+ipcMain.handle("print-to-printer", async (_event, args) => {
+  try {
+    const { printerName, content, type } = args;
+    if (!mainWindow) {
+      throw new Error("No active window");
+    }
+    const printWindow = new BrowserWindow({
+      show: false,
       webPreferences: {
-        contextIsolation: !0,
-        nodeIntegration: !1
+        contextIsolation: true,
+        nodeIntegration: false
       }
-    }), g = T(t, a);
-    await l.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(g)}`);
-    const u = {
-      silent: !0,
+    });
+    const html = generatePrintHTML(content, type);
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    const printOptions = {
+      silent: true,
       // Don't show print dialog
-      printBackground: !0,
-      deviceName: e,
+      printBackground: true,
+      deviceName: printerName,
       margins: {
         marginType: "none"
       }
     };
-    return await l.webContents.print(u), setTimeout(() => {
-      l.close();
-    }, 500), { success: !0, message: "Print job sent successfully" };
-  } catch (e) {
-    return console.error("Error printing:", e), {
-      success: !1,
-      message: e instanceof Error ? e.message : "Unknown error"
+    await printWindow.webContents.print(printOptions);
+    setTimeout(() => {
+      printWindow.close();
+    }, 500);
+    return { success: true, message: "Print job sent successfully" };
+  } catch (error) {
+    console.error("Error printing:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error"
     };
   }
 });
-m.handle("get-default-printer", async () => {
+ipcMain.handle("get-default-printer", async () => {
   try {
-    const o = s == null ? void 0 : s.webContents;
-    if (!o)
+    const contents = mainWindow == null ? void 0 : mainWindow.webContents;
+    if (!contents) {
       throw new Error("No active window");
-    const e = o.getPrinters().find((t) => t.isDefault);
-    return e ? {
-      name: e.name,
-      displayName: e.displayName || e.name,
-      description: e.description || ""
+    }
+    const printers = contents.getPrinters();
+    const defaultPrinter = printers.find((p) => p.isDefault);
+    return defaultPrinter ? {
+      name: defaultPrinter.name,
+      displayName: defaultPrinter.displayName || defaultPrinter.name,
+      description: defaultPrinter.description || ""
     } : null;
-  } catch (o) {
-    return console.error("Error getting default printer:", o), null;
+  } catch (error) {
+    console.error("Error getting default printer:", error);
+    return null;
   }
 });
-m.handle("test-print", async (o, n) => {
+ipcMain.handle("test-print", async (_event, printerName) => {
   try {
-    if (!s)
+    if (!mainWindow) {
       throw new Error("No active window");
-    const e = new f({
-      show: !1,
+    }
+    const printWindow = new BrowserWindow({
+      show: false,
       webPreferences: {
-        contextIsolation: !0,
-        nodeIntegration: !1
+        contextIsolation: true,
+        nodeIntegration: false
       }
-    }), t = `
+    });
+    const testHTML = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -214,48 +305,59 @@ m.handle("test-print", async (o, n) => {
         <body>
           <div class="test-print">
             <h1>Test Print</h1>
-            <p>Printer: ${n}</p>
+            <p>Printer: ${printerName}</p>
             <p>Date: ${(/* @__PURE__ */ new Date()).toLocaleString()}</p>
             <p>Status: SUCCESS</p>
           </div>
         </body>
       </html>
     `;
-    await e.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(t)}`);
-    const a = {
-      silent: !0,
-      printBackground: !0,
-      deviceName: n,
+    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testHTML)}`);
+    const printOptions = {
+      silent: true,
+      printBackground: true,
+      deviceName: printerName,
       margins: {
         marginType: "none"
       }
     };
-    return await e.webContents.print(a), setTimeout(() => {
-      e.close();
-    }, 500), { success: !0, message: "Test print sent successfully" };
-  } catch (e) {
-    return console.error("Error test printing:", e), {
-      success: !1,
-      message: e instanceof Error ? e.message : "Unknown error"
+    await printWindow.webContents.print(printOptions);
+    setTimeout(() => {
+      printWindow.close();
+    }, 500);
+    return { success: true, message: "Test print sent successfully" };
+  } catch (error) {
+    console.error("Error test printing:", error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error"
     };
   }
 });
-m.handle("measure-signal", async () => {
-  const o = performance.now();
+ipcMain.handle("measure-signal", async () => {
+  const start = performance.now();
   try {
     await fetch("https://www.google.com/favicon.ico", {
       method: "HEAD",
       cache: "no-cache",
       mode: "no-cors"
     });
-  } catch (e) {
-    return process.env.NODE_ENV === "development" && console.log("Signal measurement failed:", e), 10;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.log("Signal measurement failed:", error);
+    }
+    return 10;
   }
-  const n = performance.now() - o;
-  return n < 50 ? 100 : n < 100 ? 80 : n < 200 ? 60 : n < 400 ? 40 : n < 800 ? 20 : 10;
+  const latency = performance.now() - start;
+  if (latency < 50) return 100;
+  if (latency < 100) return 80;
+  if (latency < 200) return 60;
+  if (latency < 400) return 40;
+  if (latency < 800) return 20;
+  return 10;
 });
-function T(o, n) {
-  const e = `
+function generatePrintHTML(content, type) {
+  const styles = `
     <style>
       body {
         font-family: 'Courier New', monospace;
@@ -296,18 +398,25 @@ function T(o, n) {
       }
     </style>
   `;
-  let t = "";
-  return n === "kitchen" ? t = '<div class="header">KITCHEN ORDER</div>' : n === "bill" ? t = '<div class="header">CUSTOMER BILL</div>' : n === "token" && (t = '<div class="header">TOKEN NUMBER</div>'), `
+  let header = "";
+  if (type === "kitchen") {
+    header = '<div class="header">KITCHEN ORDER</div>';
+  } else if (type === "bill") {
+    header = '<div class="header">CUSTOMER BILL</div>';
+  } else if (type === "token") {
+    header = '<div class="header">TOKEN NUMBER</div>';
+  }
+  return `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8">
-        ${e}
+        ${styles}
       </head>
       <body>
-        ${t}
+        ${header}
         <div class="content">
-          ${o}
+          ${content}
         </div>
         <div class="footer">
           ${(/* @__PURE__ */ new Date()).toLocaleString()}

@@ -322,7 +322,7 @@ const OrderHistory = ({ onClose, onEditOrder, isLoading = false, hasPendingOpera
                                                             className="flex justify-between text-sm text-red-600 line-through opacity-75"
                                                         >
                                                             <span>
-                                                                ❌ {item.name} {item.riceType && `(${item.riceType})`}
+                                                                ❌ {item.name}
                                                             </span>
                                                             <span>
                                                                 x{item.quantity} = Rs. {((item.price + (item.ricePrice || 0)) * item.quantity).toFixed(2)}
@@ -353,7 +353,7 @@ const OrderHistory = ({ onClose, onEditOrder, isLoading = false, hasPendingOpera
                                                     >
                                                         <span>
                                                             {isNewItem && '✨ NEW: '}
-                                                            {item.name} {item.riceType && `(${item.riceType})`}
+                                                            {item.name}
                                                         </span>
                                                         <span>
                                                             x{item.quantity} = Rs. {((item.price + (item.ricePrice || 0)) * item.quantity).toFixed(2)}

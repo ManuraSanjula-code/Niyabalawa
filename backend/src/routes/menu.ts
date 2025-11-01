@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../database/postgres';
+import { DatabaseErrorHandler } from '../database/errorHandler';
 
 const router = Router();
 
@@ -18,19 +19,26 @@ router.get('/', async (req: Request, res: Response) => {
               kitchen
        FROM menu_items
        ORDER BY CASE category
-                    WHEN 'main' THEN 1
-                    WHEN 'rice' THEN 2
+                    WHEN 'rice' THEN 1
+                    WHEN 'main' THEN 2
                     WHEN 'addon' THEN 3
                     WHEN 'dessert' THEN 4
                     WHEN 'drinks' THEN 5
                     END,
+                CASE WHEN name LIKE '%Fried Rice%' THEN 
+                  CASE 
+                    WHEN name LIKE '%Basmathi%' THEN 0
+                    WHEN name LIKE '%Keeri Samba%' THEN 1
+                    ELSE 2
+                  END
+                ELSE 3 END,
                 name`
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Error getting menu items:', error);
-    res.status(500).json({ error: 'Failed to get menu items' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get menu items');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -61,8 +69,8 @@ router.get('/:category', async (req: Request, res: Response) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Error getting menu items by category:', error);
-    res.status(500).json({ error: 'Failed to get menu items' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get menu items by category');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -129,8 +137,8 @@ router.post('/', async (req: Request, res: Response) => {
     console.log(`✅ Created menu item: ${name}`);
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error creating menu item:', error);
-    res.status(500).json({ error: 'Failed to create menu item' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'create menu item');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -176,8 +184,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     console.log(`✅ Updated menu item: ${result.rows[0].name}`);
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error updating menu item:', error);
-    res.status(500).json({ error: 'Failed to update menu item' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'update menu item');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -201,8 +209,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
     console.log(`✅ Deleted menu item: ${result.rows[0].name}`);
     res.json({ message: 'Menu item deleted successfully' });
   } catch (error) {
-    console.error('Error deleting menu item:', error);
-    res.status(500).json({ error: 'Failed to delete menu item' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'delete menu item');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 

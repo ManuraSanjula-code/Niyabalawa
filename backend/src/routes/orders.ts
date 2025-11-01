@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { orderService } from '../services/orderService';
+import { DatabaseErrorHandler } from '../database/errorHandler';
 
 const router = Router();
 
@@ -9,13 +10,13 @@ const router = Router();
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { orderType, items, total, frontendId } = req.body;
+    const { orderType, items, total, frontendId, pagerNumber } = req.body;
 
     if (!orderType || !items || !total) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const order = await orderService.createOrder(orderType, items, total, frontendId);
+    const order = await orderService.createOrder(orderType, items, total, frontendId, pagerNumber);
 
     // Emit socket event (will be handled by socket.io in server.ts)
     const io = req.app.get('io');
@@ -28,8 +29,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json(order);
   } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'create order');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -46,8 +47,8 @@ router.get('/all', async (req: Request, res: Response) => {
     );
     res.json(orders);
   } catch (error) {
-    console.error('Error getting all orders:', error);
-    res.status(500).json({ error: 'Failed to get orders' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get all orders');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -60,8 +61,8 @@ router.get('/pending', async (req: Request, res: Response) => {
     const orders = await orderService.getPendingOrders();
     res.json(orders);
   } catch (error) {
-    console.error('Error getting pending orders:', error);
-    res.status(500).json({ error: 'Failed to get pending orders' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get pending orders');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -80,8 +81,8 @@ router.get('/:tokenNumber', async (req: Request, res: Response) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Error getting order:', error);
-    res.status(500).json({ error: 'Failed to get order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get order by token');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -113,8 +114,8 @@ router.put('/:tokenNumber', async (req: Request, res: Response) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Error updating order:', error);
-    res.status(500).json({ error: 'Failed to update order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'update order');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -140,8 +141,8 @@ router.post('/:tokenNumber/complete', async (req: Request, res: Response) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Error completing order:', error);
-    res.status(500).json({ error: 'Failed to complete order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'complete order');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -167,8 +168,8 @@ router.delete('/:tokenNumber', async (req: Request, res: Response) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Error cancelling order:', error);
-    res.status(500).json({ error: 'Failed to cancel order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'cancel order');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -194,8 +195,8 @@ router.delete('/:tokenNumber/permanent', async (req: Request, res: Response) => 
 
     res.json({ message: 'Order deleted successfully', tokenNumber });
   } catch (error) {
-    console.error('Error deleting order:', error);
-    res.status(500).json({ error: 'Failed to delete order' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'delete order permanently');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -228,8 +229,8 @@ router.delete('/', async (req: Request, res: Response) => {
       deletedCount 
     });
   } catch (error) {
-    console.error('Error deleting all orders:', error);
-    res.status(500).json({ error: 'Failed to delete all orders' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'delete all orders');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -249,8 +250,8 @@ router.get('/date/:date', async (req: Request, res: Response) => {
     console.log(`📋 Returning ${orders.length} orders for date ${date}`);
     res.json(orders);
   } catch (error) {
-    console.error('Error getting orders by date:', error);
-    res.status(500).json({ error: 'Failed to get orders' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get orders by date');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 
@@ -265,8 +266,8 @@ router.get('/debug/all', async (req: Request, res: Response) => {
     orders.forEach(o => console.log(`  - ${o.tokenNumber} at ${o.createdAt}`));
     res.json({ total: orders.length, orders });
   } catch (error) {
-    console.error('Error getting debug orders:', error);
-    res.status(500).json({ error: 'Failed to get debug orders' });
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get debug orders');
+    res.status(errorResponse.status).json(errorResponse.response);
   }
 });
 

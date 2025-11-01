@@ -10,7 +10,8 @@ export class OrderService {
     orderType: 'dine-in' | 'take-away',
     items: CartItem[],
     total: number,
-    frontendId?: string
+    frontendId?: string,
+    pagerNumber?: number
   ): Promise<Order> {
     const client = await pool.connect();
 
@@ -26,10 +27,10 @@ export class OrderService {
       // Insert order
       // Store DB-unique token (includes date prefix) to avoid duplicates across days
       const orderResult = await client.query(
-        `INSERT INTO orders (token_number, order_type, status, items, total, frontend_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO orders (token_number, order_type, status, items, total, frontend_id, pager_number)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [tokenResponse.tokenNumber, orderType, status, JSON.stringify(items), total, frontendId]
+        [tokenResponse.tokenNumber, orderType, status, JSON.stringify(items), total, frontendId, pagerNumber]
       );
 
       const order = orderResult.rows[0];
@@ -92,7 +93,7 @@ export class OrderService {
         return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting all orders:', error);
-      return [];
+      throw error; // Re-throw to allow route-level error handling
     }
   }
 
@@ -110,7 +111,7 @@ export class OrderService {
         return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting pending orders:', error);
-      return [];
+      throw error; // Re-throw to allow route-level error handling
     }
   }
 
@@ -132,7 +133,7 @@ export class OrderService {
       return this.formatOrder(result.rows[0]);
     } catch (error) {
       console.error('❌ Error getting order by token:', error);
-      return null;
+      throw error; // Re-throw to allow route-level error handling
     }
   }
 
@@ -357,7 +358,7 @@ export class OrderService {
         return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting orders by date range:', error);
-      return [];
+      throw error; // Re-throw to allow route-level error handling
     }
   }
 
@@ -383,7 +384,7 @@ export class OrderService {
       return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting orders by date:', error);
-      return [];
+      throw error; // Re-throw to allow route-level error handling
     }
   }
 
@@ -425,6 +426,7 @@ export class OrderService {
       frontendId: dbOrder.frontend_id as string | undefined,
       originalItems: dbOrder.original_items as CartItem[] | undefined,
       isEdited: dbOrder.is_edited as boolean | undefined,
+      pagerNumber: dbOrder.pager_number as number | undefined,
     };
   }
 }
