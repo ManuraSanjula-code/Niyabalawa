@@ -28,8 +28,6 @@ function App() {
         updateQuantity,
         removeFromCart,
         setOrderType,
-        pagerNumber,
-        setPagerNumber,
         changeRiceType,
         savePendingOrder,
         loadPendingOrder,
@@ -56,7 +54,7 @@ function App() {
     } = useBackgroundData();
 
     // Monitor network status
-    const { isOnline, wasOffline } = useNetworkStatus();
+    const { isOnline, showReconnected, isSlow } = useNetworkStatus();
 
     // Role-based access control
     const [currentRole, setCurrentRole] = useState<UserRole>('cashier');
@@ -363,14 +361,14 @@ function App() {
                     if (removedItems.length > 0) {
                         message += '🗑️ REMOVED ITEMS:\n';
                         removedItems.forEach(item => {
-                            message += `  ❌ ${item.name} x${item.quantity}\n`;
+                            message += `  ❌ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
                         });
                         message += '\n';
                     }
                     if (addedItems.length > 0) {
                         message += '✨ ADDED ITEMS:\n';
                         addedItems.forEach(item => {
-                        message += `  ✓ ${item.name} x${item.quantity}\n`;
+                        message += `  ✓ ${item.name}${item.riceType ? ` (${item.riceType})` : ''} x${item.quantity}\n`;
                     });
                     message += '\n';
                 }
@@ -386,12 +384,6 @@ function App() {
                 }
 
                     showNotification(message.trim(), 'success');
-                    
-                    // Clear cart and reset editing state after successful update
-                    cart.forEach(item => removeFromCart(item.id));
-                    setIsEditingPending(false);
-                    setCurrentEditingToken(null);
-                    setOriginalOrderItems([]);
                 } else {
                     showNotification('⚠️ Order updated locally but not printed (API unavailable)', 'error');
                 }
@@ -823,8 +815,6 @@ function App() {
                             isPrintingToken={isPrintingToken}
                             isProcessingPayment={isProcessingPayment}
                             isUpdatingOrder={isUpdatingOrder}
-                            pagerNumber={pagerNumber}
-                            onPagerNumberChange={setPagerNumber}
                         />
                     </div>
                 </div>
@@ -912,7 +902,7 @@ function App() {
                 </div>
             )}
 
-            <NetworkOverlay isOnline={isOnline} wasOffline={wasOffline} />
+            <NetworkOverlay isOnline={isOnline} showReconnected={showReconnected} isSlow={isSlow} />
         </div>
     );
 }

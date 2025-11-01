@@ -10,8 +10,7 @@ export class OrderService {
     orderType: 'dine-in' | 'take-away',
     items: CartItem[],
     total: number,
-    frontendId?: string,
-    pagerNumber?: number
+    frontendId?: string
   ): Promise<Order> {
     const client = await pool.connect();
 
@@ -27,10 +26,10 @@ export class OrderService {
       // Insert order
       // Store DB-unique token (includes date prefix) to avoid duplicates across days
       const orderResult = await client.query(
-        `INSERT INTO orders (token_number, order_type, status, items, total, frontend_id, pager_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO orders (token_number, order_type, status, items, total, frontend_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [tokenResponse.tokenNumber, orderType, status, JSON.stringify(items), total, frontendId, pagerNumber]
+        [tokenResponse.tokenNumber, orderType, status, JSON.stringify(items), total, frontendId]
       );
 
       const order = orderResult.rows[0];
@@ -93,25 +92,28 @@ export class OrderService {
         return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting all orders:', error);
-      throw error; // Re-throw to allow route-level error handling
+      return [];
     }
   }
 
   /**
-   * Get all pending orders (dine-in only)
+   * Get today's pending orders (dine-in only) in Asia/Kolkata timezone
    */
   async getPendingOrders(): Promise<Order[]> {
     try {
+      // Get today's date in Asia/Kolkata timezone and filter pending orders
       const result = await pool.query(
         `SELECT * FROM orders
          WHERE status = 'pending'
+         AND DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata') = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
          ORDER BY created_at DESC`
       );
 
-        return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
+      console.log(`📋 Found ${result.rows.length} pending orders for today`);
+      return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting pending orders:', error);
-      throw error; // Re-throw to allow route-level error handling
+      return [];
     }
   }
 
@@ -133,7 +135,7 @@ export class OrderService {
       return this.formatOrder(result.rows[0]);
     } catch (error) {
       console.error('❌ Error getting order by token:', error);
-      throw error; // Re-throw to allow route-level error handling
+      return null;
     }
   }
 
@@ -358,7 +360,7 @@ export class OrderService {
         return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting orders by date range:', error);
-      throw error; // Re-throw to allow route-level error handling
+      return [];
     }
   }
 
@@ -384,7 +386,7 @@ export class OrderService {
       return result.rows.map((r: Record<string, unknown>) => this.formatOrder(r));
     } catch (error) {
       console.error('❌ Error getting orders by date:', error);
-      throw error; // Re-throw to allow route-level error handling
+      return [];
     }
   }
 
@@ -426,7 +428,6 @@ export class OrderService {
       frontendId: dbOrder.frontend_id as string | undefined,
       originalItems: dbOrder.original_items as CartItem[] | undefined,
       isEdited: dbOrder.is_edited as boolean | undefined,
-      pagerNumber: dbOrder.pager_number as number | undefined,
     };
   }
 }
