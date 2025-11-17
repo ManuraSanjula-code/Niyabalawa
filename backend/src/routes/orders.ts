@@ -256,6 +256,22 @@ router.get('/date/:date', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/orders/summary/today
+ * Get today's order summary with statistics
+ */
+router.get('/summary/today', async (req: Request, res: Response) => {
+  try {
+    console.log(`📊 Today's summary request received`);
+    const summary = await orderService.getTodayOrderSummary();
+    console.log(`📋 Returning summary with ${summary.totalOrders} orders`);
+    res.json(summary);
+  } catch (error) {
+    const errorResponse = DatabaseErrorHandler.handleRouteError(error, 'get today\'s order summary');
+    res.status(errorResponse.status).json(errorResponse.response);
+  }
+});
+
+/**
  * GET /api/orders/debug/all
  * Debug: Get all orders (temporary)
  */

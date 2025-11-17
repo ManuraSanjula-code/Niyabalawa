@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Save, RefreshCw, RotateCcw } from 'lucide-react';
-import { getAvailablePrinters, testPrint } from '../utils/printerUtils';
-import { tokenApi } from '../services/api';
+import { X, Printer, Save, RefreshCw, RotateCcw, FileText } from 'lucide-react';
+import { getAvailablePrinters, testPrint, printTodayOrderSummary } from '../utils/printerUtils';
+import { tokenApi, orderApi } from '../services/api';
 
 interface SettingsProps {
     onClose: () => void;
@@ -32,6 +32,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [testingPrinter, setTestingPrinter] = useState<string>('');
     const [isResettingToken, setIsResettingToken] = useState(false);
+    const [isPrintingSummary, setIsPrintingSummary] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     const loadPrinters = async () => {
@@ -188,6 +189,74 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             });
         } finally {
             setIsResettingToken(false);
+        }
+    };
+
+    const handlePrintTodaySummary = async () => {
+        if (!settings.billPrinter) {
+            setMessage({ 
+                type: 'error', 
+                text: 'Please select a Bill Printer first to print the summary.' 
+            });
+            return;
+        }
+
+        // Confirmation dialog
+        const confirmPrint = window.confirm(
+            '📊 Print Today\'s Order Summary?\n\n' +
+            'This will print a complete summary of today\'s orders including:\n' +
+            '• Total orders and revenue\n' +
+            '• Order type breakdown (Dine-in/Take-away)\n' +
+            '• Order status (Pending/Completed/Cancelled)\n' +
+            '• Top selling items\n\n' +
+            'Continue?'
+        );
+
+        if (!confirmPrint) {
+            return;
+        }
+
+        try {
+            setIsPrintingSummary(true);
+            setMessage({ type: 'success', text: 'Fetching today\'s order summary...' });
+            
+            // Fetch today's summary from backend
+            const summary = await orderApi.getTodayOrderSummary();
+            
+            console.log('📊 Summary data:', summary);
+            
+            if (summary.totalOrders === 0) {
+                setMessage({ 
+                    type: 'error', 
+                    text: '⚠️ No orders found for today. Nothing to print.' 
+                });
+                return;
+            }
+
+            setMessage({ type: 'success', text: 'Printing summary...' });
+            
+            // Print the summary
+            const printSuccess = await printTodayOrderSummary(summary);
+            
+            if (printSuccess) {
+                setMessage({ 
+                    type: 'success', 
+                    text: `✅ Summary printed successfully! (${summary.totalOrders} orders, Rs. ${summary.totalRevenue.toFixed(2)})` 
+                });
+            } else {
+                setMessage({ 
+                    type: 'error', 
+                    text: '❌ Failed to print summary. Check printer connection.' 
+                });
+            }
+        } catch (error) {
+            console.error('Error printing today\'s summary:', error);
+            setMessage({ 
+                type: 'error', 
+                text: '❌ Failed to generate or print summary. Please try again.' 
+            });
+        } finally {
+            setIsPrintingSummary(false);
         }
     };
 
@@ -380,6 +449,43 @@ const Settings: React.FC<SettingsProps> = ({ onClose }) => {
                                             </>
                                         )}
                                     </button>
+                                </div>
+                            </div>
+
+                            {/* Print Today's Summary Button */}
+                            <div className="pt-4 border-t border-gray-200">
+                                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                                        <FileText size={18} />
+                                        Print Today's Order Summary
+                                    </h4>
+                                    <p className="text-sm text-purple-800 mb-3">
+                                        Generate and print a complete summary of today's orders including total revenue, 
+                                        order breakdown, and top-selling items. Prints to the Bill Printer.
+                                    </p>
+                                    <button
+                                        onClick={handlePrintTodaySummary}
+                                        disabled={isPrintingSummary || !settings.billPrinter}
+                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={!settings.billPrinter ? 'Please select a Bill Printer first' : 'Print today\'s summary'}
+                                    >
+                                        {isPrintingSummary ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                <span>Printing...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Printer size={16} />
+                                                <span>Print Today's Summary</span>
+                                            </>
+                                        )}
+                                    </button>
+                                    {!settings.billPrinter && (
+                                        <p className="text-xs text-red-600 mt-2">
+                                            ⚠️ Please select a Bill Printer above to enable this feature
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

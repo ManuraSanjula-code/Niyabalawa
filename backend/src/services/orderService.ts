@@ -389,6 +389,92 @@ export class OrderService {
   }
 
   /**
+   * Get today's order summary with statistics
+   */
+  async getTodayOrderSummary(): Promise<{
+    date: string;
+    totalOrders: number;
+    totalRevenue: number;
+    dineInOrders: number;
+    takeAwayOrders: number;
+    pendingOrders: number;
+    completedOrders: number;
+    cancelledOrders: number;
+    orders: Order[];
+    itemsSummary: Array<{
+      name: string;
+      quantity: number;
+      revenue: number;
+    }>;
+  }> {
+    try {
+      // Get today's date in YYYY-MM-DD format (Asia/Kolkata timezone)
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      console.log(`📊 Getting order summary for: ${today}`);
+
+      // Get all orders for today
+      const orders = await this.getOrdersByDate(today);
+
+      // Calculate statistics
+      const totalOrders = orders.length;
+      const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+      const dineInOrders = orders.filter(o => o.orderType === 'dine-in').length;
+      const takeAwayOrders = orders.filter(o => o.orderType === 'take-away').length;
+      const pendingOrders = orders.filter(o => o.status === 'pending').length;
+      const completedOrders = orders.filter(o => o.status === 'paid' || o.status === 'completed').length;
+      const cancelledOrders = orders.filter(o => o.status === 'cancelled').length;
+
+      // Calculate item-wise summary
+      const itemsMap = new Map<string, { quantity: number; revenue: number }>();
+      
+      orders.forEach(order => {
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach(item => {
+            const itemName = item.name || 'Unknown Item';
+            const quantity = item.quantity || 1;
+            const itemTotal = (item.price || 0) * quantity;
+            
+            const existing = itemsMap.get(itemName);
+            if (existing) {
+              existing.quantity += quantity;
+              existing.revenue += itemTotal;
+            } else {
+              itemsMap.set(itemName, { quantity, revenue: itemTotal });
+            }
+          });
+        }
+      });
+
+      // Convert items map to array and sort by quantity (descending)
+      const itemsSummary = Array.from(itemsMap.entries())
+        .map(([name, data]) => ({
+          name,
+          quantity: data.quantity,
+          revenue: data.revenue
+        }))
+        .sort((a, b) => b.quantity - a.quantity);
+
+      console.log(`📊 Summary: ${totalOrders} orders, Rs. ${totalRevenue.toFixed(2)} revenue`);
+
+      return {
+        date: today,
+        totalOrders,
+        totalRevenue,
+        dineInOrders,
+        takeAwayOrders,
+        pendingOrders,
+        completedOrders,
+        cancelledOrders,
+        orders,
+        itemsSummary
+      };
+    } catch (error) {
+      console.error('❌ Error getting today\'s order summary:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Format database order to Order type
    */
   /**

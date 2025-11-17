@@ -6,6 +6,7 @@ import AdminPanel from './components/AdminPanel';
 import ProductManagement from './components/ProductManagement';
 import Settings from './components/Settings';
 import RoleSelector, { UserRole } from './components/RoleSelector';
+import PaymentModal from './components/PaymentModal';
 import { useBilling } from './hooks/useBilling';
 import { useBackgroundData } from './hooks/useBackgroundData';
 import { socketService } from './services/socket';
@@ -71,6 +72,7 @@ function App() {
     const [showProductManagement, setShowProductManagement] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [showOrderHistory, setShowOrderHistory] = useState(false);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [isEditingPending, setIsEditingPending] = useState(false);
     const [currentEditingToken, setCurrentEditingToken] = useState<string | null>(null);
     const [originalOrderItems, setOriginalOrderItems] = useState<CartItem[]>([]);
@@ -177,6 +179,7 @@ function App() {
                     tokenNumber: result.order.tokenNumber,
                     items: result.order.items,
                     orderType: result.order.orderType,
+                    pagerNumber: result.order.pagerNumber,
                     timestamp: new Date().toISOString()
                 });
 
@@ -194,11 +197,16 @@ function App() {
         }
     };
 
-    const handlePayNow = async () => {
+    const handlePayNow = () => {
         if (isProcessingPayment || isPrintingToken || isUpdatingOrder) return;
+        setShowPaymentModal(true);
+    };
 
+    const handleConfirmPayment = async (amountReceived: number, change: number) => {
         try {
             setIsProcessingPayment(true);
+            setShowPaymentModal(false);
+
             if (isEditingPending && currentEditingToken) {
                 const completionSuccess = await completePendingOrder(currentEditingToken);
                 if (completionSuccess) {
@@ -214,7 +222,7 @@ function App() {
                         timestamp: new Date().toISOString()
                     });
 
-                    showNotification(`Payment completed for Token ${currentEditingToken}!`, 'success');
+                    showNotification(`Payment completed for Token ${currentEditingToken}! Change: Rs. ${change.toFixed(2)}`, 'success');
                     setIsEditingPending(false);
                     setCurrentEditingToken(null);
                 } else {
@@ -239,6 +247,7 @@ function App() {
                         tokenNumber: result.order.tokenNumber,
                         items: result.order.items,
                         orderType: result.order.orderType,
+                        pagerNumber: result.order.pagerNumber,
                         timestamp: new Date().toISOString()
                     });
 
@@ -256,7 +265,7 @@ function App() {
                             timestamp: new Date().toISOString()
                         });
 
-                        showNotification(`Payment completed for Token ${result.order.tokenNumber}!`, 'success');
+                        showNotification(`Payment completed for Token ${result.order.tokenNumber}! Change: Rs. ${change.toFixed(2)}`, 'success');
                     } else {
                         showNotification('✗ Failed to complete payment - API unavailable', 'error');
                     }
@@ -353,6 +362,7 @@ function App() {
                             tokenNumber: currentEditingToken,
                             items: currentCart,
                             orderType: orderType,
+                            pagerNumber: pagerNumber,
                             timestamp: new Date().toISOString(),
                             isEdited: true,
                             originalItems: originalOrderItems
@@ -911,6 +921,15 @@ function App() {
                     </div>
                 </div>
             )}
+
+            {/* Payment Modal */}
+            <PaymentModal
+                isOpen={showPaymentModal}
+                onClose={() => setShowPaymentModal(false)}
+                total={total}
+                onConfirmPayment={handleConfirmPayment}
+                isProcessing={isProcessingPayment}
+            />
 
             <NetworkOverlay isOnline={isOnline} wasOffline={wasOffline} />
         </div>

@@ -164,6 +164,15 @@ const formatKitchenOrder = (orderData: unknown): string => {
     content += `<span><strong>Type:</strong> ${orderTypeText}</span>`;
     content += `<span><strong>Time:</strong> ${timestamp}</span>`;
     content += `</div>`;
+    
+    // Pager Number - only for dine-in orders if selected
+    const pagerNum = order.pagerNumber as number | undefined;
+    if (typeof orderTypeText === 'string' && orderTypeText.toLowerCase() === 'dine-in' && pagerNum && pagerNum > 0) {
+        content += `<div style="margin-top: 4px; font-size: 11px;">`;
+        content += `<span><strong>Pager:</strong> ${pagerNum}</span>`;
+        content += `</div>`;
+    }
+    
     content += `</div>`;
     
     content += `<div style="border-bottom: 2px solid #000; margin: 5px 0;"></div>`;
@@ -585,6 +594,7 @@ export const printTokenNumber = async (tokenData: unknown): Promise<boolean> => 
             const content = formatToken(tokenData);
             console.log(`📄 Generated token content length: ${content.length} characters`);
             console.log(`📄 Token content preview:`, content.substring(0, 200) + '...');
+            console.log(`🕐 Starting print job at: ${new Date().toISOString()}`);
             
             const result = await window.electronAPI.printToPrinter({
                 printerName: printer,
@@ -592,21 +602,197 @@ export const printTokenNumber = async (tokenData: unknown): Promise<boolean> => 
                 type: 'token'
             });
             
+            console.log(`🕐 Print job completed at: ${new Date().toISOString()}`);
+            
             if (result.success) {
                 console.log('✅ Token printed successfully');
+                console.log('✅ Result:', result);
                 return true;
             } else {
                 console.error('❌ Failed to print token:', result.message);
                 console.error('❌ Full result object:', result);
+                
+                // Try to provide more helpful error messages
+                if (result.message && result.message.includes('denied')) {
+                    console.error('💡 Tip: Check if printer is ready and not in use by another application');
+                } else if (result.message && result.message.includes('not found')) {
+                    console.error('💡 Tip: Printer may have been disconnected or renamed');
+                }
+                
                 return false;
             }
         } catch (error) {
-            console.error('💥 Error printing token:', error);
-            console.error('💥 Error details:', error);
+            console.error('💥 Exception during token print:', error);
+            console.error('💥 Error name:', error instanceof Error ? error.name : 'Unknown');
+            console.error('💥 Error message:', error instanceof Error ? error.message : 'Unknown');
+            console.error('💥 Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+            
+            // Provide troubleshooting hints
+            console.error('� Troubleshooting steps:');
+            console.error('   1. Check if printer is powered on and connected');
+            console.error('   2. Try running a test print from Windows printer settings');
+            console.error('   3. Check printer queue for stuck jobs');
+            console.error('   4. Restart the printer and try again');
+            console.error('   5. Check if printer driver is installed correctly');
+            
             return false;
         }
     } else {
         console.warn('⚠️ Electron API not available, printing to console');
+        return false;
+    }
+};
+
+/**
+ * Format today's order summary for printing
+ */
+const formatOrderSummary = (summaryData: unknown): string => {
+    if (!summaryData || typeof summaryData !== 'object') {
+        return `<div style="width: 68mm; text-align: center; padding: 2mm;">No summary data available</div>`;
+    }
+    
+    const summary = summaryData as {
+        date: string;
+        totalOrders: number;
+        totalRevenue: number;
+        dineInOrders: number;
+        takeAwayOrders: number;
+        pendingOrders: number;
+        completedOrders: number;
+        cancelledOrders: number;
+        itemsSummary: Array<{
+            name: string;
+            quantity: number;
+            revenue: number;
+        }>;
+    };
+    
+    // 68mm width (~30 characters at 12pt) - optimized for thermal printers
+    let content = `<div style="width: 68mm; font-size: 11px; font-family: 'Courier New', monospace; padding: 2mm;">`;
+    
+    // Header
+    content += `<div style="text-align: center; margin-bottom: 10px;">`;
+    content += `<div style="font-size: 16px; font-weight: bold; letter-spacing: 1px;">NIYABALAWA</div>`;
+    content += `<div style="font-size: 14px; font-weight: bold;">RESTAURANT</div>`;
+    content += `<div style="font-size: 12px; margin-top: 5px; font-weight: bold;">Daily Sales Summary</div>`;
+    content += `<div style="font-size: 10px; margin-top: 3px;">${summary.date}</div>`;
+    content += `<div style="font-size: 9px; margin-top: 2px;">${new Date().toLocaleString()}</div>`;
+    content += `</div>`;
+    
+    content += `<div style="border-bottom: 2px solid #000; margin: 8px 0;"></div>`;
+    
+    // Order Statistics
+    content += `<div style="margin: 10px 0;">`;
+    content += `<div style="font-size: 12px; font-weight: bold; margin-bottom: 5px;">ORDER STATISTICS</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Total Orders:</span>`;
+    content += `<span style="font-weight: bold;">${summary.totalOrders}</span>`;
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Dine-In:</span>`;
+    content += `<span>${summary.dineInOrders}</span>`;
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Take-Away:</span>`;
+    content += `<span>${summary.takeAwayOrders}</span>`;
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Completed:</span>`;
+    content += `<span>${summary.completedOrders}</span>`;
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Pending:</span>`;
+    content += `<span>${summary.pendingOrders}</span>`;
+    content += `</div>`;
+    content += `<div style="display: flex; justify-content: space-between; margin: 3px 0;">`;
+    content += `<span>Cancelled:</span>`;
+    content += `<span>${summary.cancelledOrders}</span>`;
+    content += `</div>`;
+    content += `</div>`;
+    
+    content += `<div style="border-bottom: 2px solid #000; margin: 8px 0;"></div>`;
+    
+    // Revenue
+    content += `<div style="margin: 10px 0;">`;
+    content += `<div style="font-size: 12px; font-weight: bold; margin-bottom: 5px;">REVENUE</div>`;
+    content += `<div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; background: #f0f0f0; padding: 5px;">`;
+    content += `<span>TOTAL REVENUE:</span>`;
+    content += `<span>Rs. ${summary.totalRevenue.toFixed(2)}</span>`;
+    content += `</div>`;
+    content += `</div>`;
+    
+    content += `<div style="border-bottom: 2px solid #000; margin: 8px 0;"></div>`;
+    
+    // Items Summary (Top selling items)
+    if (summary.itemsSummary && summary.itemsSummary.length > 0) {
+        content += `<div style="margin: 10px 0;">`;
+        content += `<div style="font-size: 12px; font-weight: bold; margin-bottom: 5px;">TOP SELLING ITEMS</div>`;
+        
+        // Show top 15 items or all items if less than 15
+        const topItems = summary.itemsSummary.slice(0, 15);
+        topItems.forEach((item, index) => {
+            content += `<div style="margin: 4px 0; padding: 3px; ${index % 2 === 0 ? 'background: #f9f9f9;' : ''}">`;
+            content += `<div style="display: flex; justify-content: space-between; font-size: 10px;">`;
+            content += `<span style="font-weight: bold; flex: 1;">${item.name}</span>`;
+            content += `<span style="margin-left: 5px;">x${item.quantity}</span>`;
+            content += `</div>`;
+            content += `<div style="display: flex; justify-content: flex-end; font-size: 9px; color: #666;">`;
+            content += `<span>Rs. ${item.revenue.toFixed(2)}</span>`;
+            content += `</div>`;
+            content += `</div>`;
+        });
+        
+        if (summary.itemsSummary.length > 15) {
+            content += `<div style="font-size: 9px; text-align: center; margin-top: 5px; color: #666;">`;
+            content += `... and ${summary.itemsSummary.length - 15} more items`;
+            content += `</div>`;
+        }
+        
+        content += `</div>`;
+        content += `<div style="border-bottom: 1px dashed #000; margin: 8px 0;"></div>`;
+    }
+    
+    // Footer
+    content += `<div style="text-align: center; margin-top: 10px; font-size: 10px;">`;
+    content += `<div style="font-weight: bold;">End of Day Report</div>`;
+    content += `<div style="margin-top: 3px; font-size: 9px;">Generated by Niyabalawa POS</div>`;
+    content += `</div>`;
+    
+    content += `</div>`;
+    
+    return content;
+};
+
+/**
+ * Print today's order summary using bill printer
+ */
+export const printTodayOrderSummary = async (summaryData: unknown): Promise<boolean> => {
+    const printer = getPrinter('bill');
+    console.log(`📊 Printing Today's Order Summary to: ${printer}`, summaryData);
+    
+    if (window.electronAPI) {
+        try {
+            const content = formatOrderSummary(summaryData);
+            const result = await window.electronAPI.printToPrinter({
+                printerName: printer,
+                content,
+                type: 'bill'
+            });
+            
+            if (result.success) {
+                console.log('✅ Order summary printed successfully');
+                return true;
+            } else {
+                console.error('❌ Failed to print order summary:', result.message);
+                return false;
+            }
+        } catch (error) {
+            console.error('💥 Error printing order summary:', error);
+            return false;
+        }
+    } else {
+        console.warn('⚠️ Electron API not available, printing to console');
+        console.log('Order Summary:', summaryData);
         return false;
     }
 };

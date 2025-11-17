@@ -298,52 +298,139 @@ ipcMain.handle('print-to-printer', async (_event, args: {
   content: string;
   type: 'kitchen' | 'bill' | 'token';
 }) => {
-  try {
-    const { printerName, content, type } = args;
-    
-    if (!mainWindow) {
-      throw new Error('No active window');
-    }
+  return new Promise((resolve) => {
+    (async () => {
+      let printWindow: BrowserWindow | null = null;
+      
+      try {
+        const { printerName, content, type } = args;
+        
+        console.log(`🖨️ Starting print job for ${type} to printer: ${printerName}`);
+        
+        if (!mainWindow) {
+          throw new Error('No active window');
+        }
 
-    // Create a hidden window for printing
-    const printWindow = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
+        // Create a hidden window for printing
+        printWindow = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            offscreen: true, // Enable offscreen rendering for better compatibility
+          },
+        });
 
-    // Load the content to print
-    const html = generatePrintHTML(content, type);
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        // Prevent the window from being closed prematurely
+        let canClose = false;
+        printWindow.on('close', (e) => {
+          if (!canClose) {
+            console.log('⚠️ Print window close prevented - print job still in progress');
+            e.preventDefault();
+          }
+        });
 
-    // Print options
-    const printOptions = {
-      silent: true, // Don't show print dialog
-      printBackground: true,
-      deviceName: printerName,
-      margins: {
-        marginType: 'none' as const
+        // Load the content to print
+        const html = generatePrintHTML(content, type);
+        console.log(`📄 Loading HTML content (${html.length} bytes)`);
+        
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        
+        // CRITICAL: Wait for page to be FULLY loaded and rendered
+        // This is the key fix for intermittent printing issues
+        await printWindow.webContents.executeJavaScript('document.readyState');
+        console.log(`📄 Document ready state checked`);
+        
+        // Wait for all resources and rendering to complete
+        await new Promise(resolve => {
+          printWindow!.webContents.once('did-finish-load', () => {
+            console.log(`✅ Page finished loading`);
+            // Additional wait for rendering to complete
+            setTimeout(resolve, 1000);
+          });
+          // Fallback timeout in case event doesn't fire
+          setTimeout(resolve, 3000);
+        });
+        
+        console.log(`🎨 Page fully loaded and rendered, preparing to print...`);
+
+        // Print options optimized for POS thermal printers
+        const printOptions = {
+          silent: true, // Don't show print dialog
+          printBackground: true,
+          color: false, // Thermal printers are usually monochrome
+          deviceName: printerName,
+          margins: {
+            marginType: 'none' as const
+          },
+          pageSize: {
+            width: type === 'token' ? 72000 : 68000, // micrometers (72mm or 68mm)
+            height: 297000 // A4 height, will auto-trim
+          },
+          landscape: false,
+          scaleFactor: 100
+        };
+
+        console.log(`⚙️ Print options:`, printOptions);
+
+        // Use the promise-based print method with proper error handling
+        try {
+          console.log(`📤 Sending to printer...`);
+          console.log(`⏰ Print start time: ${new Date().toISOString()}`);
+          
+          // CRITICAL FIX: Use callback-based print for better reliability
+          // The promise-based version can resolve before the job is spooled
+          await new Promise<void>((printResolve, printReject) => {
+            printWindow!.webContents.print(printOptions, (success, failureReason) => {
+              if (success) {
+                console.log(`✅ Print callback returned success`);
+                printResolve();
+              } else {
+                console.error(`❌ Print callback returned failure: ${failureReason}`);
+                printReject(new Error(failureReason || 'Print failed'));
+              }
+            });
+          });
+          
+          console.log(`✅ Print command executed successfully`);
+          console.log(`⏰ Print end time: ${new Date().toISOString()}`);
+          
+          // CRITICAL: Wait even longer to ensure Windows Print Spooler has fully queued the job
+          // This is crucial for mini PCs with slower processing
+          console.log(`⏳ Waiting for print spooler to process job...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          canClose = true;
+          printWindow.close();
+          printWindow = null;
+          
+          console.log(`✅ Print job completed for ${type}`);
+          resolve({ success: true, message: 'Print job sent successfully' });
+          
+        } catch (printError) {
+          console.error('❌ Print execution error:', printError);
+          throw printError;
+        }
+
+      } catch (error) {
+        console.error('❌ Error in print-to-printer handler:', error);
+        
+        // Cleanup
+        if (printWindow) {
+          try {
+            printWindow.destroy();
+          } catch (e) {
+            console.error('Error destroying print window:', e);
+          }
+        }
+        
+        resolve({ 
+          success: false, 
+          message: error instanceof Error ? error.message : 'Unknown printing error' 
+        });
       }
-    };
-
-    // Print
-    await printWindow.webContents.print(printOptions);
-
-    // Close the print window after a delay
-    setTimeout(() => {
-      printWindow.close();
-    }, 500);
-
-    return { success: true, message: 'Print job sent successfully' };
-  } catch (error) {
-    console.error('Error printing:', error);
-    return { 
-      success: false, 
-      message: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
+    })();
+  });
 });
 
 /**
@@ -380,79 +467,145 @@ ipcMain.handle('get-default-printer', async () => {
  * Test print functionality
  */
 ipcMain.handle('test-print', async (_event, printerName: string) => {
-  try {
-    if (!mainWindow) {
-      throw new Error('No active window');
-    }
+  return new Promise((resolve) => {
+    (async () => {
+      let printWindow: BrowserWindow | null = null;
+      
+      try {
+        console.log(`🧪 Starting test print to: ${printerName}`);
+        
+        if (!mainWindow) {
+          throw new Error('No active window');
+        }
 
-    const printWindow = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
+        printWindow = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            offscreen: true,
+          },
+        });
 
-    const testHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body {
-              font-family: 'Courier New', monospace;
-              margin: 0;
-              padding: 20px;
-            }
-            .test-print {
-              text-align: center;
-            }
-            h1 {
-              font-size: 24px;
-              margin-bottom: 10px;
-            }
-            p {
-              font-size: 14px;
-              margin: 5px 0;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="test-print">
-            <h1>Test Print</h1>
-            <p>Printer: ${printerName}</p>
-            <p>Date: ${new Date().toLocaleString()}</p>
-            <p>Status: SUCCESS</p>
-          </div>
-        </body>
-      </html>
-    `;
+        // Prevent premature closing
+        let canClose = false;
+        printWindow.on('close', (e) => {
+          if (!canClose) {
+            e.preventDefault();
+          }
+        });
 
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testHTML)}`);
+        const testHTML = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <style>
+                body {
+                  font-family: 'Courier New', monospace;
+                  margin: 0;
+                  padding: 20px;
+                }
+                .test-print {
+                  text-align: center;
+                }
+                h1 {
+                  font-size: 24px;
+                  margin-bottom: 10px;
+                }
+                p {
+                  font-size: 14px;
+                  margin: 5px 0;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="test-print">
+                <h1>Test Print</h1>
+                <p>Printer: ${printerName}</p>
+                <p>Date: ${new Date().toLocaleString()}</p>
+                <p>Status: SUCCESS</p>
+                <p>===========================</p>
+                <p>If you can read this,</p>
+                <p>printer is working!</p>
+              </div>
+            </body>
+          </html>
+        `;
 
-    const printOptions = {
-      silent: true,
-      printBackground: true,
-      deviceName: printerName,
-      margins: {
-        marginType: 'none' as const
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(testHTML)}`);
+        
+        // Wait for page to be FULLY loaded and rendered
+        await printWindow.webContents.executeJavaScript('document.readyState');
+        await new Promise(resolve => {
+          printWindow!.webContents.once('did-finish-load', () => {
+            setTimeout(resolve, 1000);
+          });
+          setTimeout(resolve, 3000);
+        });
+
+        const printOptions = {
+          silent: true,
+          printBackground: true,
+          color: false,
+          deviceName: printerName,
+          margins: {
+            marginType: 'none' as const
+          },
+          pageSize: {
+            width: 72000, // 72mm
+            height: 297000
+          },
+          landscape: false,
+          scaleFactor: 100
+        };
+
+        console.log(`📤 Sending test print...`);
+        
+        // Use callback-based print for reliability
+        await new Promise<void>((printResolve, printReject) => {
+          printWindow!.webContents.print(printOptions, (success, failureReason) => {
+            if (success) {
+              console.log(`✅ Test print callback returned success`);
+              printResolve();
+            } else {
+              console.error(`❌ Test print callback returned failure: ${failureReason}`);
+              printReject(new Error(failureReason || 'Test print failed'));
+            }
+          });
+        });
+        
+        console.log(`✅ Test print command sent`);
+        
+        // Wait longer for spooler to process
+        console.log(`⏳ Waiting for print spooler...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        canClose = true;
+        printWindow.close();
+        printWindow = null;
+
+        console.log(`✅ Test print completed`);
+        resolve({ success: true, message: 'Test print sent successfully' });
+
+      } catch (error) {
+        console.error('❌ Error test printing:', error);
+        
+        if (printWindow) {
+          try {
+            printWindow.destroy();
+          } catch (e) {
+            console.error('Error destroying test print window:', e);
+          }
+        }
+        
+        resolve({ 
+          success: false, 
+          message: error instanceof Error ? error.message : 'Unknown error' 
+        });
       }
-    };
-
-    await printWindow.webContents.print(printOptions);
-
-    setTimeout(() => {
-      printWindow.close();
-    }, 500);
-
-    return { success: true, message: 'Test print sent successfully' };
-  } catch (error) {
-    console.error('Error test printing:', error);
-    return { 
-      success: false, 
-      message: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
+    })();
+  });
 });
 
 /**

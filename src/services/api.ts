@@ -92,6 +92,29 @@ export const orderApi = {
     const response = await api.delete('/orders?confirm=yes');
     return response.data;
   },
+
+  /**
+   * Get today's order summary with statistics
+   */
+  async getTodayOrderSummary(): Promise<{
+    date: string;
+    totalOrders: number;
+    totalRevenue: number;
+    dineInOrders: number;
+    takeAwayOrders: number;
+    pendingOrders: number;
+    completedOrders: number;
+    cancelledOrders: number;
+    orders: Order[];
+    itemsSummary: Array<{
+      name: string;
+      quantity: number;
+      revenue: number;
+    }>;
+  }> {
+    const response = await api.get('/orders/summary/today');
+    return response.data;
+  },
 };
 
 // Token API functions
